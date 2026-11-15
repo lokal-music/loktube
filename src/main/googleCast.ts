@@ -216,20 +216,36 @@ class CastConnection {
 
   async openYoutube(): Promise<string> {
     let status = await this.getStatus()
-    const running = () => status.status?.applications?.find((app) =>
-      (app.appId === YOUTUBE_APP || app.appId === YOUTUBE_ANDROID || app.universalAppId === YOUTUBE_APP) && !!app.transportId)
-    if (!running()) {
-      const id = this.requestId++
-      status = await this.request(RECEIVER, 'receiver-0',
-        { type: 'LAUNCH', appId: YOUTUBE_APP, supportedAppTypes: ['ANDROID_TV'], requestId: id },
-        (ns, response) => ns === RECEIVER && (
-          (response.type === 'RECEIVER_STATUS' && !!response.status?.applications?.some((app) =>
-            app.appId === YOUTUBE_APP || app.appId === YOUTUBE_ANDROID || app.universalAppId === YOUTUBE_APP)) ||
-          (response.type === 'LAUNCH_ERROR' && response.requestId === id)
-        ), 25000)
-      if (status.type === 'LAUNCH_ERROR') throw new Error('YouTube cannot be launched on this Cast device: ' + (status.reason ?? 'unsupported receiver'))
+    const isYoutube = (app: ReceiverApp) =>
+      app.appId === YOUTUBE_APP || app.appId === YOUTUBE_ANDROID || app.universalAppId === YOUTUBE_APP
+    let running = status.status?.applications?.find((app) => isYoutube(app) && !!app.transportId)
+    if (!running) {
+      // Cast Connect Android TV receivers need the supportedAppTypes hint,
+      // while classic Chromecast/Nest devices launch the universal ID without
+      // one. Retry without the hint only when the first LAUNCH is rejected.
+      for (const types of [['ANDROID_TV'], []]) {
+        const id = this.requestId++
+        const launch = await this.request(RECEIVER, 'receiver-0',
+          { type: 'LAUNCH', appId: YOUTUBE_APP, ...(types.length ? { supportedAppTypes: types } : {}), requestId: id },
+          (ns, response) => ns === RECEIVER && (
+            (response.type === 'RECEIVER_STATUS' && !!response.status?.applications?.some(isYoutube)) ||
+            (response.type === 'LAUNCH_ERROR' && response.requestId === id)
+          ), 25000)
+        if (launch.type === 'LAUNCH_ERROR') {
+          if (types.length) continue
+          throw new Error('YouTube could not launch on this Cast receiver: ' + (launch.reason ?? 'unsupported'))
+        }
+        status = launch
+        break
+      }
+      running = status.status?.applications?.find((app) => isYoutube(app) && !!app.transportId)
+      if (!running) {
+        // Launch events can arrive before the receiver publishes its transport.
+        status = await this.getStatus()
+        running = status.status?.applications?.find((app) => isYoutube(app) && !!app.transportId)
+      }
     }
-    const transport = running()?.transportId
+    const transport = running?.transportId
     if (!transport) throw new Error('YouTube receiver did not provide a Cast session')
     this.send(CONNECTION, transport, { type: 'CONNECT' })
     const response = await this.request(YOUTUBE, transport, { type: 'getMdxSessionStatus' },
