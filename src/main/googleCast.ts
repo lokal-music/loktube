@@ -24,6 +24,9 @@ let activeSession: { device: NetworkCastDevice; screenId: string; connection: Ca
 
 export async function discoverGoogleCast(): Promise<NetworkCastDevice[]> {
   const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true })
+  // Some receivers ignore the unicast-response (QU) bit and reply to the
+  // multicast group instead. Listen on 5353 when the OS allows it.
+  const multicast = dgram.createSocket({ type: 'udp4', reuseAddr: true })
   const records: DnsRecord[] = []
   const seenQueries = new Set<string>()
   let closed = false
@@ -45,6 +48,7 @@ export async function discoverGoogleCast(): Promise<NetworkCastDevice[]> {
       if (timer) clearTimeout(timer)
       if (tick) clearInterval(tick)
       socket.close()
+      try { multicast.close() } catch { /* A blocked 5353 bind is optional. */ }
       if (error) { reject(error); return }
       const devices = collectCastDevices(records)
       for (const device of devices) knownDevices.set(device.id, { device, time: Date.now() })
@@ -62,7 +66,7 @@ export async function discoverGoogleCast(): Promise<NetworkCastDevice[]> {
         for (const query of queries.values()) socket.send(query, 5353, '224.0.0.251', () => undefined)
       }
     }
-    socket.on('message', (packet) => {
+    const reply = (packet: Buffer) => {
       try {
         const parsed = parseCastDnsPacket(packet)
         records.push(...parsed)
@@ -74,6 +78,13 @@ export async function discoverGoogleCast(): Promise<NetworkCastDevice[]> {
           } else if (record.type === 'SRV') addQuery(record.host, 1)
         }
       } catch { /* Ignore unrelated or malformed packets on the LAN. */ }
+    }
+    socket.on('message', reply)
+    multicast.on('message', reply)
+    multicast.on('error', () => { /* mDNS port 5353 can be claimed by the OS. */ })
+    multicast.bind(5353, '0.0.0.0', () => {
+      if (closed) return
+      try { multicast.addMembership('224.0.0.251') } catch { /* Unicast discovery can still work. */ }
     })
     socket.on('error', (err) => finish(new Error('Google Cast discovery failed: ' + err.message)))
     socket.bind(0, '0.0.0.0', () => {
