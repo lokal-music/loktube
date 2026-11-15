@@ -69,7 +69,7 @@ module.exports=async({app,page})=>{
   await page.mouse.move(500,2)
   await page.waitForFunction(()=>Math.abs(document.querySelector('.wt-topbar').getBoundingClientRect().top)<1)
   const watchTab=page.locator('.wt-tabbar [role="tab"][aria-selected="true"]')
-  const watchTabId=await watchTab.locator('..').getAttribute('data-tab-id')
+  const watchTabId=await watchTab.evaluate(node=>node.closest('[data-tab-id]')?.getAttribute('data-tab-id'))
   assert.ok(watchTabId,'active watch tab is identifiable')
   await watchTab.click()
   await page.waitForFunction(()=>document.querySelector('.wt-topbar').getBoundingClientRect().bottom<=1,null,{timeout:7000})
