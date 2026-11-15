@@ -133,6 +133,7 @@ export function CastControl() {
       const result = await window.api.controlGoogleCast(action, value)
       setActiveCast(result)
       if (action === 'stop') setNotice('Cast stopped. Resume playback locally when ready.')
+      if (action === 'reconnect') setNotice('Reconnected to ' + result?.deviceName + '.')
       if (action === 'seek') setNotice('Seek requested at ' + Math.floor(value ?? 0) + 's.')
     } catch (reason) {
       setError(describeError(reason))
@@ -225,12 +226,12 @@ export function CastControl() {
         <div className="flex items-center gap-2">
           <Cast aria-hidden="true" className="h-4 w-4 wt-accent-text" />
           <span className="min-w-0 flex-1 truncate font-semibold">{activeCast.deviceName}</span>
-          <span className="text-xs text-neutral-400">{activeCast.state === 'paused' ? 'Paused' : 'Casting'}</span>
+          <span className="text-xs text-neutral-400">{!activeCast.connected ? 'Disconnected' : activeCast.state === 'paused' ? 'Paused' : 'Casting'}</span>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={isBusy} onClick={() => void control(activeCast.state === 'paused' ? 'play' : 'pause')}
+          <button type="button" disabled={isBusy} onClick={() => void control(!activeCast.connected ? 'reconnect' : activeCast.state === 'paused' ? 'play' : 'pause')}
             className="rounded bg-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-600 disabled:opacity-40">
-            {activeCast.state === 'paused' ? 'Resume' : 'Pause'}
+            {!activeCast.connected ? 'Reconnect' : activeCast.state === 'paused' ? 'Resume' : 'Pause'}
           </button>
           <button type="button" disabled={isBusy} onClick={() => void control('stop')}
             className="rounded bg-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-600 disabled:opacity-40">Stop casting</button>
@@ -240,7 +241,7 @@ export function CastControl() {
           <span className="shrink-0">Volume</span>
           <input aria-label="Cast device volume" type="range" min="0" max="100" step="5"
             value={Math.round((activeCast.volume ?? 0.5) * 100)}
-            disabled={isBusy} onChange={(event) => {
+            disabled={isBusy || !activeCast.connected} onChange={(event) => {
               const volume = Number(event.target.value) / 100
               setActiveCast((prev) => prev ? { ...prev, volume } : null)
             }}
@@ -263,7 +264,7 @@ export function CastControl() {
           <input id="google-cast-seek" type="number" min="0" max="86400" step="1" inputMode="numeric"
             value={seekSeconds} onChange={(event) => setSeekSeconds(event.target.value)}
             className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs" />
-          <button type="submit" disabled={isBusy || !seekSeconds || !Number.isFinite(Number(seekSeconds))}
+          <button type="submit" disabled={isBusy || !activeCast.connected || !seekSeconds || !Number.isFinite(Number(seekSeconds))}
             className="rounded bg-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-600 disabled:opacity-40">Seek</button>
         </form>
       </div>}
