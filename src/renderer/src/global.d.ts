@@ -68,6 +68,11 @@ declare global {
       onUpdateState: (listener: (state: import('../../shared/ipc').UpdateState) => void) => () => void
       getPlayerAudioPreferences: () => Promise<PlayerAudioPreferences>
       setPlayerAudioPreferences: (audio: PlayerAudioPreferences) => Promise<void>
+      listCastScreens: () => Promise<import('../../shared/ipc').CastScreen[]>
+      pairCastScreen: (code: string) => Promise<import('../../shared/ipc').CastScreen>
+      forgetCastScreen: (id: string) => Promise<void>
+      playOnCastScreen: (request: import('../../shared/ipc').CastPlayRequest) => Promise<void>
+      stopCastScreen: (id: string) => Promise<void>
       getVideoComments: (videoId: string, cursor?: string) => Promise<import('../../shared/ipc').VideoCommentsResponse>
       setVideoRating: (videoId: string, rating: import('../../shared/ipc').VideoRating) => Promise<import('../../shared/ipc').VideoRatingResponse>
       getVideoInfo: (videoId: string) => Promise<VideoInfoResponse>
