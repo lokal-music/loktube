@@ -69,8 +69,10 @@ export function useTheaterHeaderReveal(active: boolean): boolean {
     const idleDelay = 2500
     const cancelHide = () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = undefined } }
     const cancelIdle = () => { if (idleTimer) { clearTimeout(idleTimer); idleTimer = undefined } }
-    const focusedElement = () => document.activeElement instanceof HTMLElement &&
-      document.activeElement.closest(toolbar) ? document.activeElement : null
+    const focusedElement = (): HTMLElement | null => {
+      const element = document.activeElement
+      return element instanceof HTMLElement && element.closest(toolbar) ? element : null
+    }
     const focused = () => !!focusedElement()
     const hovered = () => Number.isFinite(lastX) && Number.isFinite(lastY) &&
       !!document.elementFromPoint(lastX, lastY)?.closest(toolbar)
