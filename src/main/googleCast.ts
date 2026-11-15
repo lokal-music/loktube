@@ -267,7 +267,7 @@ export async function playOnGoogleCast(request: GoogleCastPlayRequest): Promise<
   }
 }
 
-export async function controlGoogleCast(action: 'play' | 'pause' | 'seek' | 'stop' | 'volume', value?: number): Promise<CastSessionState | null> {
+export async function controlGoogleCast(action: 'play' | 'pause' | 'seek' | 'stop' | 'volume', value?: number): Promise<GoogleCastState | null> {
   const current = activeSession
   if (!current) throw new Error('No active Google Cast session. Select a device again.')
   if (action === 'volume') {
