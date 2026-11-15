@@ -14,7 +14,7 @@ Both approaches send the YouTube video and a bounded queue to the receiver. They
 3. **Pixel Tablet:** attach it to its Charging Speaker Dock and enable Hub Mode / Cast reception. An undocked Pixel Tablet is not a general-purpose Cast receiver.
 4. Start a YouTube video in LokTube. Open **Cast** in the header. A 3.6-second LAN scan populates the **Devices on this network** section; press **Refresh** to scan again.
 5. Select a device. LokTube opens the YouTube receiver through Cast V2, queries its YouTube screen ID via MDX, then sends the video/queue through YouTube Lounge. Local playback pauses **only after a successful remote command**.
-6. When connected, use **Pause/Resume**, **Stop casting**, **Volume**, or **Seek (s)**. To switch devices, select another discovered receiver; LokTube transfers the playlist and attempts to stop the previous receiver only after the new one accepts the request.
+6. When connected, use **Pause/Resume**, **Stop casting**, **Volume**, or **Seek (s)**. To switch devices, select another discovered receiver; LokTube transfers the playlist and attempts to stop the previous receiver only after the new one accepts the request.\n7. If the LAN connection drops, the menu shows **Disconnected**. **Reconnect** attempts to attach to the same YouTube receiver session without restarting its video. If the device's IP changed or YouTube restarted, refresh the list and select the device to start a fresh handoff.
 
 The source and destination negotiate a YouTube session using the receiver's own app. Google Cast control works only with receivers that support this YouTube receiver and the MDX/Lounge handoff. A device showing in discovery does not guarantee that its YouTube receiver will accept playback.
 
