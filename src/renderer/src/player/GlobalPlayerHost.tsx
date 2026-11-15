@@ -687,6 +687,7 @@ export function GlobalPlayerHost() {
         currentTime: videoEl.currentTime || 0,
         duration: Number.isFinite(videoEl.duration) ? videoEl.duration : 0,
         volume: videoEl.muted ? 0 : videoEl.volume,
+        audible: !!loadedVideoRef.current && !videoEl.paused && !videoEl.ended && !videoEl.muted && videoEl.volume > 0 && videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
         pictureInPicture: document.pictureInPictureElement === videoEl
       }
       window.dispatchEvent(new CustomEvent<PlayerStateDetail>(PLAYER_STATE_EVENT, { detail }))
@@ -776,6 +777,9 @@ export function GlobalPlayerHost() {
     videoEl.addEventListener('playing', emitState)
     videoEl.addEventListener('timeupdate', emitState)
     videoEl.addEventListener('volumechange', emitState)
+    videoEl.addEventListener('waiting', emitState)
+    videoEl.addEventListener('canplay', emitState)
+    videoEl.addEventListener('emptied', emitState)
     videoEl.addEventListener('enterpictureinpicture', emitState)
     videoEl.addEventListener('leavepictureinpicture', emitState)
     emitState()
@@ -790,6 +794,9 @@ export function GlobalPlayerHost() {
       videoEl.removeEventListener('playing', emitState)
       videoEl.removeEventListener('timeupdate', emitState)
       videoEl.removeEventListener('volumechange', emitState)
+      videoEl.removeEventListener('waiting', emitState)
+      videoEl.removeEventListener('canplay', emitState)
+      videoEl.removeEventListener('emptied', emitState)
       videoEl.removeEventListener('enterpictureinpicture', emitState)
       videoEl.removeEventListener('leavepictureinpicture', emitState)
     }

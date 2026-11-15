@@ -1,7 +1,7 @@
 import { t, useLocale } from '../i18n/LocaleContext'
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { NavigationType, Router, createPath, parsePath, UNSAFE_LocationContext, UNSAFE_NavigationContext, type Location, type Navigator, type To } from 'react-router-dom'
-import { Play, X } from 'lucide-react'
+import { Volume2, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { MouseHistoryNavigation } from './mouseNavigation'
 import { TAB_SESSION_KEY, decodeTabSession, encodeTabSession, type SavedTab } from './tabSession'
@@ -270,7 +270,7 @@ function routeTitle(path: string) {
   return labels[path] || (path.startsWith('/channel') ? t("Channel") : path.startsWith('/collection') ? t("Collection") : 'Video')
 }
 
-export function TabBar({ playingIds = [] }: { playingIds?: string[] }) {
+export function TabBar({ audibleIds = [] }: { audibleIds?: string[] }) {
   useLocale()
   const { tabs, activeId, open, select, close, closeAll, reorder } = useAppTabs()
   const [menu, setMenu] = useState<{ x: number; y: number; tabId: string | null } | null>(null)
@@ -361,7 +361,7 @@ export function TabBar({ playingIds = [] }: { playingIds?: string[] }) {
           onDragStart={(event) => event.preventDefault()}
           className={`flex h-8 w-48 min-w-28 max-w-48 shrink-0 cursor-grab items-center border-b-2 active:cursor-grabbing ${tab.id === activeId ? 'wt-tab-selected bg-white/5' : 'border-transparent text-neutral-400 hover:bg-neutral-900'}`}>
           <button type="button" role="tab" aria-selected={tab.id === activeId} onClick={() => select(tab.id)} title={label} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 text-left text-xs">
-            {playingIds.includes(tab.id) && <Play aria-label={t("Playing")} className="wt-accent-text h-3 w-3 shrink-0" fill="currentColor" strokeWidth={1.8} />}
+            {audibleIds.includes(tab.id) && <Volume2 aria-label="Audio playing" className="wt-accent-text h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />}
             <span className="truncate">{label}</span>
           </button>
           <button type="button" data-tab-close onClick={() => close(tab.id)} title={t("Close tab")} aria-label={t("Close {title}", { title: label })} className="grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded hover:bg-neutral-700"><X aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={1.8} /></button>

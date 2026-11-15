@@ -95,6 +95,11 @@ const api = {
   },
   getPlayerAudioPreferences: (): Promise<PlayerAudioPreferences> => ipcRenderer.invoke(IPC_CHANNELS.PLAYER_AUDIO_GET),
   setPlayerAudioPreferences: (audio: PlayerAudioPreferences): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.PLAYER_AUDIO_SET, audio),
+  listCastScreens: (): Promise<import('../shared/ipc').CastScreen[]> => ipcRenderer.invoke(IPC_CHANNELS.CAST_SCREENS_LIST),
+  pairCastScreen: (code: string): Promise<import('../shared/ipc').CastScreen> => ipcRenderer.invoke(IPC_CHANNELS.CAST_SCREEN_PAIR, code),
+  forgetCastScreen: (id: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.CAST_SCREEN_FORGET, id),
+  playOnCastScreen: (request: import('../shared/ipc').CastPlayRequest): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.CAST_SCREEN_PLAY, request),
+  stopCastScreen: (id: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.CAST_SCREEN_STOP, id),
   getVideoComments: (videoId: string, cursor?: string): Promise<import('../shared/ipc').VideoCommentsResponse> => ipcRenderer.invoke(IPC_CHANNELS.GET_VIDEO_COMMENTS, videoId, cursor),
   setVideoRating: (videoId: string, rating: import('../shared/ipc').VideoRating): Promise<import('../shared/ipc').VideoRatingResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.SET_VIDEO_RATING, videoId, rating),

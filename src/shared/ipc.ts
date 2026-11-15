@@ -46,6 +46,11 @@ export const IPC_CHANNELS = {
   GET_HOME_MORE: 'youtube:get-home-more',
   PLAYER_AUDIO_GET: 'player:audio-get',
   PLAYER_AUDIO_SET: 'player:audio-set',
+  CAST_SCREENS_LIST: 'cast:screens:list',
+  CAST_SCREEN_PAIR: 'cast:screen:pair',
+  CAST_SCREEN_FORGET: 'cast:screen:forget',
+  CAST_SCREEN_PLAY: 'cast:screen:play',
+  CAST_SCREEN_STOP: 'cast:screen:stop',
   SESSION_GET_STATE: 'session:get-state',
   SESSION_CREATE_USER: 'session:create-user',
   SESSION_LOGIN: 'session:login',
@@ -353,6 +358,19 @@ export interface VideoPreview {
 export interface PlayerAudioPreferences {
   volume: number
   muted: boolean
+}
+
+/** YouTube TV devices explicitly linked via Settings > Link with TV code. */
+export interface CastScreen {
+  id: string
+  name: string
+}
+
+export interface CastPlayRequest {
+  screenId: string
+  videoId: string
+  videoIds?: string[]
+  position?: number
 }
 
 export interface RecommendedChannel {
