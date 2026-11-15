@@ -10,6 +10,7 @@ import { validYoutubeVideoIds } from './loungeProtocol'
 
 const RECEIVER = 'urn:x-cast:com.google.cast.receiver'
 const CONNECTION = 'urn:x-cast:com.google.cast.tp.connection'
+const HEARTBEAT = 'urn:x-cast:com.google.cast.tp.heartbeat'
 const YOUTUBE = 'urn:x-cast:com.google.youtube.mdx'
 const YOUTUBE_APP = '233637DE'
 const YOUTUBE_ANDROID = '2C6A6E3D'
@@ -102,12 +103,23 @@ class CastConnection {
   private requestId = 1
   private closed = false
   private receiverVolume: number | null = null
+  private lastHeartbeat = Date.now()
+  private readonly heartbeat: NodeJS.Timeout
   private constructor(socket: TLSSocket) {
     this.socket = socket
     socket.on('data', (chunk: Buffer) => this.onData(chunk))
     socket.on('error', (error) => this.fail(error))
     socket.on('close', () => this.fail(new Error('The Cast receiver disconnected.')))
     this.events.setMaxListeners(30)
+    this.heartbeat = setInterval(() => {
+      if (this.closed || !this.socket.encrypted) return
+      if (Date.now() - this.lastHeartbeat > 22000) {
+        this.fail(new Error('The Cast receiver stopped responding.'))
+        return
+      }
+      this.send(HEARTBEAT, 'receiver-0', { type: 'PING' })
+    }, 5000)
+    this.heartbeat.unref()
   }
 
   static async open(device: NetworkCastDevice): Promise<CastConnection> {
@@ -137,6 +149,7 @@ class CastConnection {
   private fail(error: Error) {
     if (this.closed) return
     this.closed = true
+    clearInterval(this.heartbeat)
     this.events.emit('failure', error)
     this.socket.destroy()
     if (activeSession?.connection === this) activeSession = null
@@ -154,6 +167,11 @@ class CastConnection {
       try {
         const message = decodeCastMessage(payload)
         const data = JSON.parse(message.payload) as CastResponse
+        this.lastHeartbeat = Date.now()
+        if (message.namespace === HEARTBEAT && data.type === 'PING') {
+          this.send(HEARTBEAT, message.sourceId, { type: 'PONG' })
+          continue
+        }
         if (data.type === 'RECEIVER_STATUS' && typeof data.status?.volume?.level === 'number') {
           this.receiverVolume = data.status.volume.level
         }
