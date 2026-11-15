@@ -53,7 +53,11 @@ export function CastControl() {
       .finally(() => { if (mounted) setLoading(false) })
     return () => { mounted = false; scanId.current++ }
   }, [])
-  useEffect(() => { if (open) void refresh() }, [open, refresh])
+  useEffect(() => {
+    if (!open) return
+    void refresh()
+    void window.api.getGoogleCastState().then(setActiveCast).catch((reason) => setError(describeError(reason)))
+  }, [open, refresh])
   useEffect(() => {
     const update = (event: Event) => {
       const detail = (event as CustomEvent<PlayerStateDetail>).detail
