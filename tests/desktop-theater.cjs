@@ -64,6 +64,30 @@ module.exports=async({app,page})=>{
   assert.equal(await app.evaluate(()=>globalThis.__featurePlaybackRequests.length),requested)
   await page.screenshot({path:'.cache/loktube-theater.png'})
 
+  // Mouse-click focus on the tab bar must not pin a theater header over the
+  // video indefinitely. It should retract without any click in the player.
+  await page.mouse.move(500,2)
+  await page.waitForFunction(()=>Math.abs(document.querySelector('.wt-topbar').getBoundingClientRect().top)<1)
+  const watchTab=page.locator('.wt-tabbar [role="tab"][aria-selected="true"]')
+  const watchTabId=await watchTab.locator('..').getAttribute('data-tab-id')
+  assert.ok(watchTabId,'active watch tab is identifiable')
+  await watchTab.click()
+  await page.waitForFunction(()=>document.querySelector('.wt-topbar').getBoundingClientRect().bottom<=1,null,{timeout:7000})
+  assert.equal(await watchTab.evaluate(node=>document.activeElement===node),false,'idle auto-hide releases only mouse-origin tab focus')
+  await page.mouse.move(500,2)
+  await page.waitForFunction(()=>Math.abs(document.querySelector('.wt-topbar').getBoundingClientRect().top)<1)
+
+  // Clicking back from another tab re-enables theater with a tab button
+  // already focused. The same timeout must work when focus predates activation.
+  await page.getByRole('button',{name:'New tab',exact:true}).click()
+  await page.waitForFunction(()=>!document.querySelector('.wt-theater'))
+  await page.locator(`.wt-tabbar [data-tab-id="${watchTabId}"] [role="tab"]`).click()
+  await page.waitForFunction(()=>!!document.querySelector('.wt-theater'))
+  await page.waitForFunction(()=>document.querySelector('.wt-topbar').getBoundingClientRect().bottom<=1,null,{timeout:7000})
+  assert.equal(await slot.locator('video').evaluate(node=>node===window.__theaterVideo),true,'switching tabs does not recreate the player')
+  console.log('PASS: theater header auto-hides after mouse tab focus and after switching back to an autoplay-capable watch tab')
+
+
   await page.mouse.move(500,2)
   await page.waitForFunction(()=>Math.abs(document.querySelector('.wt-topbar').getBoundingClientRect().top)<1 && Math.abs(document.querySelector('.wt-tabbar').getBoundingClientRect().top-60)<1)
   const search=page.getByRole('textbox',{name:'Search',exact:true})
