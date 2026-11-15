@@ -782,7 +782,7 @@ test('YouTube TV Lounge sessions parse framed messages and reject malformed repl
   const framed = `${message.length}\n${message}`
   assert.deepEqual(extractLoungeSessionIds(framed), { sid: 'screen-session', gsessionid: 'global-session' })
   assert.deepEqual(parseLoungeFrames(framed).map((entry) => entry[0]), ['c', 'S'])
-  assert.throws(() => extractLoungeSessionIds('3\n[]'), /active YouTube session/)
+  assert.throws(() => extractLoungeSessionIds('2\n[]'), /active YouTube session/)
   assert.throws(() => parseLoungeFrames('99\n[]'), /truncated/)
   assert.throws(() => parseLoungeFrames('5\nhello'), /invalid JSON/)
 })
