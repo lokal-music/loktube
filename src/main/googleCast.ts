@@ -72,7 +72,6 @@ export async function discoverGoogleCast(): Promise<NetworkCastDevice[]> {
             addQuery(record.value, 16)
           } else if (record.type === 'SRV') addQuery(record.host, 1)
         }
-        sendQueries()
       } catch { /* Ignore unrelated or malformed packets on the LAN. */ }
     })
     socket.on('error', (err) => finish(new Error('Google Cast discovery failed: ' + err.message)))
