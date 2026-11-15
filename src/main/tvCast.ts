@@ -201,7 +201,10 @@ export async function commandUnpairedYoutubeScreen(
     if (error instanceof SyntaxError) throw new Error('YouTube returned an unreadable receiver token')
     throw error
   }
-  const token = payload.screens?.find((entry) => entry.screenId === screenId)?.loungeToken
+  const matches = Array.isArray(payload.screens) ? payload.screens : []
+  const selected = matches.find((entry) => entry.screenId === screenId) ??
+    (matches.length === 1 && !matches[0].screenId ? matches[0] : undefined)
+  const token = selected?.loungeToken
   if (!token || token.length > 2048) throw new Error('YouTube receiver did not provide a usable Lounge token')
   const cid = CLIENT_ID.slice(0, 26)
   const details = {
