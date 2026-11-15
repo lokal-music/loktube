@@ -61,6 +61,7 @@ import {
 } from './localDb'
 import { createSavedPlaylist, listSavedPlaylists, listSavedVideos, saveVideo, removeSavedVideo, getLibraryVideos, getLibrarySaveOptions } from './accountLibrary'
 import { addSubscription, listSubscriptions, removeSubscription } from './subscriptionsStore'
+import { listCastScreens, pairCastScreen, forgetCastScreen, playOnCastScreen, stopCastScreen } from './tvCast'
 
 // AppImage launches do not always keep stdout/stderr attached. Node emits an
 // EPIPE error when a later console call writes to a closed launcher pipe; if
@@ -429,6 +430,11 @@ ipcMain.handle(IPC_CHANNELS.APP_PREFERENCES_SET, (_event, preferences: import('.
 ipcMain.handle(IPC_CHANNELS.SESSION_GET_STATE, (): Promise<LocalSessionState> => getSessionState())
 ipcMain.handle(IPC_CHANNELS.PLAYER_AUDIO_GET, () => getPlayerAudioPreferences())
 ipcMain.handle(IPC_CHANNELS.PLAYER_AUDIO_SET, (_event, audio: import('../shared/ipc').PlayerAudioPreferences) => setPlayerAudioPreferences(audio))
+ipcMain.handle(IPC_CHANNELS.CAST_SCREENS_LIST, listCastScreens)
+ipcMain.handle(IPC_CHANNELS.CAST_SCREEN_PAIR, (_event, code: string) => pairCastScreen(code))
+ipcMain.handle(IPC_CHANNELS.CAST_SCREEN_FORGET, (_event, id: string) => forgetCastScreen(id))
+ipcMain.handle(IPC_CHANNELS.CAST_SCREEN_PLAY, (_event, request: import('../shared/ipc').CastPlayRequest) => playOnCastScreen(request))
+ipcMain.handle(IPC_CHANNELS.CAST_SCREEN_STOP, (_event, id: string) => stopCastScreen(id))
 ipcMain.handle(IPC_CHANNELS.SESSION_CREATE_USER, (_event, request: CreateLocalUserRequest): Promise<LocalSessionState> => createLocalUser(request))
 ipcMain.handle(IPC_CHANNELS.SESSION_LOGIN, (_event, request: LoginLocalUserRequest): Promise<LocalSessionState> => loginLocalUser(request))
 ipcMain.handle(IPC_CHANNELS.SESSION_LOGOUT, (): Promise<LocalSessionState> => logoutLocalUser())
