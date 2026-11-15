@@ -24,5 +24,7 @@ export interface PlayerStateDetail {
   currentTime: number
   duration: number
   volume: number
+  /** Media is actually playing with non-zero output volume. */
+  audible?: boolean
   pictureInPicture?: boolean
 }
