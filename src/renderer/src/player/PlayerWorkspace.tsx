@@ -9,6 +9,7 @@ interface WorkspaceValue {
   register: (id: string, player: GlobalPlayerContextValue | null) => void
   ownerId: string
   playingIds: string[]
+  audibleIds: string[]
   requestPlayback: (id: string) => void
   shouldAutoplay: (id: string) => boolean
   playInMiniPlayer: (videoId: string) => void
@@ -30,6 +31,7 @@ export function PlayerWorkspaceProvider({ children }: { children: ReactNode }) {
   const [players, setPlayers] = useState<Record<string, GlobalPlayerContextValue>>({})
   const [preferredId, setPreferredId] = useState('')
   const [playingIds, setPlayingIds] = useState<string[]>([])
+  const [audibleIds, setAudibleIds] = useState<string[]>([])
   const autoplayOwner = useRef('')
   const requestPlayback = useCallback((id: string) => {
     autoplayOwner.current = id
@@ -69,8 +71,12 @@ export function PlayerWorkspaceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onState = (event: Event) => {
-      const { tabId, paused } = (event as CustomEvent<PlayerStateDetail>).detail
+      const { tabId, paused, audible } = (event as CustomEvent<PlayerStateDetail>).detail
       if (!tabId) return
+      setAudibleIds((current) => {
+        if (current.includes(tabId) === !!audible) return current
+        return audible ? [...current, tabId] : current.filter((id) => id !== tabId)
+      })
       setPlayingIds((current) => {
         if (current.includes(tabId) === !paused) return current
         return paused ? current.filter((id) => id !== tabId) : [...current, tabId]
@@ -80,6 +86,12 @@ export function PlayerWorkspaceProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(PLAYER_STATE_EVENT, onState)
   }, [])
 
+
+  useEffect(() => {
+    const valid = new Set(tabs.map((tab) => tab.id))
+    setPlayingIds((current) => current.every((id) => valid.has(id)) ? current : current.filter((id) => valid.has(id)))
+    setAudibleIds((current) => current.every((id) => valid.has(id)) ? current : current.filter((id) => valid.has(id)))
+  }, [tabs])
 
   const mediaOwnerId = (playingIds.includes(activeId) && available(activeId) ? activeId
     : [...playingIds].reverse().find((id) => available(id))) || ownerId
@@ -158,7 +170,7 @@ export function PlayerWorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }, [mediaOwnerId, mediaPlayer, playingIds, requestPlayback])
 
-  const value = useMemo(() => ({ register, ownerId, playingIds, requestPlayback, shouldAutoplay, playInMiniPlayer }), [register, ownerId, playingIds, requestPlayback, shouldAutoplay, playInMiniPlayer])
+  const value = useMemo(() => ({ register, ownerId, playingIds, audibleIds, requestPlayback, shouldAutoplay, playInMiniPlayer }), [register, ownerId, playingIds, audibleIds, requestPlayback, shouldAutoplay, playInMiniPlayer])
   return <WorkspaceContext.Provider value={value}>
     <GlobalPlayerContext.Provider value={selected}>{children}</GlobalPlayerContext.Provider>
   </WorkspaceContext.Provider>
