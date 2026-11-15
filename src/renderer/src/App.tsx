@@ -1055,8 +1055,8 @@ function AppNavigation({ children }: { children: ReactNode }) {
 
 function PlayerTabBar() {
   useLocale()
-  const { playingIds } = usePlayerWorkspace()
-  return <TabBar playingIds={playingIds} />
+  const { audibleIds } = usePlayerWorkspace()
+  return <TabBar audibleIds={audibleIds} />
 }
 
 function TabPlayer() {
