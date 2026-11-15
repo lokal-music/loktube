@@ -42,7 +42,7 @@ async function readScreens(): Promise<StoredScreen[]> {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     screenCache = []
   }
-  return screenCache
+  return screenCache ?? []
 }
 
 async function saveScreens(screens: StoredScreen[]): Promise<void> {
