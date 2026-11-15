@@ -100,6 +100,10 @@ const api = {
   forgetCastScreen: (id: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.CAST_SCREEN_FORGET, id),
   playOnCastScreen: (request: import('../shared/ipc').CastPlayRequest): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.CAST_SCREEN_PLAY, request),
   stopCastScreen: (id: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.CAST_SCREEN_STOP, id),
+  discoverGoogleCast: (): Promise<import('../shared/ipc').GoogleCastDevice[]> => ipcRenderer.invoke(IPC_CHANNELS.GOOGLE_CAST_DISCOVER),
+  getGoogleCastState: (): Promise<import('../shared/ipc').GoogleCastState | null> => ipcRenderer.invoke(IPC_CHANNELS.GOOGLE_CAST_STATE),
+  playOnGoogleCast: (request: import('../shared/ipc').GoogleCastPlayRequest): Promise<import('../shared/ipc').GoogleCastState> => ipcRenderer.invoke(IPC_CHANNELS.GOOGLE_CAST_PLAY, request),
+  controlGoogleCast: (action: import('../shared/ipc').GoogleCastAction, value?: number): Promise<import('../shared/ipc').GoogleCastState | null> => ipcRenderer.invoke(IPC_CHANNELS.GOOGLE_CAST_CONTROL, action, value),
   getVideoComments: (videoId: string, cursor?: string): Promise<import('../shared/ipc').VideoCommentsResponse> => ipcRenderer.invoke(IPC_CHANNELS.GET_VIDEO_COMMENTS, videoId, cursor),
   setVideoRating: (videoId: string, rating: import('../shared/ipc').VideoRating): Promise<import('../shared/ipc').VideoRatingResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.SET_VIDEO_RATING, videoId, rating),
