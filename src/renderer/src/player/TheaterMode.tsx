@@ -78,7 +78,7 @@ export function useTheaterHeaderReveal(active: boolean): boolean {
       !!document.elementFromPoint(lastX, lastY)?.closest(toolbar)
     const protectedInteraction = () => {
       const element = focusedElement()
-      return !!document.querySelector('.wt-topbar [role="dialog"], [role="menu"]') ||
+      return !!document.querySelector('.wt-topbar [role="dialog"], [role="menu"][aria-label="Tab options"]') ||
         !!element && (
           !pointerFocused ||
           !!element.closest('[role="dialog"], [role="menu"]') ||
