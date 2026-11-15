@@ -27,6 +27,18 @@ module.exports=async({app,page,profile})=>{
     name:'LokTube', executed:'LokTube', newNativeWindows:0, changedFocus:false
   })
   console.log('PASS: background renderer executes JS without native windows or focus changes')
+  const castButton=page.getByRole('button',{name:'Cast to a device',exact:true})
+  await castButton.click()
+  const castDialog=page.getByRole('dialog',{name:'Cast to a device'})
+  await castDialog.waitFor()
+  assert.equal(await castDialog.getByText('Devices on this network',{exact:true}).count(),1)
+  assert.equal(await castDialog.getByText('TV-code pairing (fallback)',{exact:true}).count(),1)
+  assert.equal(await castDialog.getByRole('button',{name:'Refresh Cast devices'}).count(),1)
+  assert.equal(await page.evaluate(()=>window.api.getGoogleCastState()),null)
+  await castDialog.getByRole('button',{name:'Close casting menu'}).click()
+  await castDialog.waitFor({state:'hidden'})
+  console.log('PASS: unified Cast device picker and TV-code fallback render without disrupting tabs')
+
   await require('./desktop-tabs.cjs')({page})
   const parser=await app.evaluate(({app})=>{
     const require=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json')

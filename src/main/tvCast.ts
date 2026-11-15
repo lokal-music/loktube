@@ -50,7 +50,7 @@ async function saveScreens(screens: StoredScreen[]): Promise<void> {
   screenCache = screens
 }
 
-async function postLounge(path: string, query: Record<string, string> = {}, fields?: Record<string, string>): Promise<string> {
+async function postLounge(path: string, query: Record<string, string> = {}, fields?: Record<string, string>, loungeToken?: string): Promise<string> {
   const url = new URL(LOUNGE_PATH + path, LOUNGE_ORIGIN)
   for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value)
   let response: Response
@@ -61,6 +61,7 @@ async function postLounge(path: string, query: Record<string, string> = {}, fiel
       headers: {
         'Origin': LOUNGE_ORIGIN,
         'Content-Type': 'application/x-www-form-urlencoded',
+        ...(loungeToken ? { 'X-YouTube-LoungeId-Token': loungeToken } : {}),
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36'
       },
       body: fields ? new URLSearchParams(fields).toString() : '',
@@ -181,4 +182,53 @@ export async function playOnCastScreen(request: CastPlayRequest): Promise<void> 
 export async function stopCastScreen(screenId: string): Promise<void> {
   if (typeof screenId !== 'string' || !screenId) throw new Error('Choose a paired TV')
   await tvCommand(screenId, 'clearPlaylist', {})
+}
+
+/**
+ * Network-discovered Google Cast devices expose a transient YouTube screen ID
+ * over the Cast V2 MDX channel. Resolve its Lounge token without saving a TV
+ * code pairing, then send the command through YouTube's remote protocol.
+ */
+export async function commandUnpairedYoutubeScreen(
+  screenId: string, command: 'setPlaylist' | 'clearPlaylist' | 'play' | 'pause' | 'seekTo',
+  fields: Record<string, string>
+): Promise<void> {
+  if (!/^[a-zA-Z0-9_-]{8,200}$/.test(screenId)) throw new Error('Invalid YouTube receiver screen ID')
+  let payload: { screens?: Array<{ screenId?: string; loungeToken?: string }> }
+  try {
+    payload = JSON.parse(await postLounge('/pairing/get_lounge_token_batch', {}, { screen_ids: screenId }))
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error('YouTube returned an unreadable receiver token')
+    throw error
+  }
+  const matches = Array.isArray(payload.screens) ? payload.screens : []
+  const selected = matches.find((entry) => entry.screenId === screenId) ??
+    (matches.length === 1 && !matches[0].screenId ? matches[0] : undefined)
+  const token = selected?.loungeToken
+  if (!token || token.length > 2048) throw new Error('YouTube receiver did not provide a usable Lounge token')
+  const cid = CLIENT_ID.slice(0, 26)
+  const details = {
+    app: 'web', 'mdx-version': '3', name: 'LokTube', id: cid,
+    device: 'REMOTE_CONTROL', capabilities: 'que,dsdtr,atp', method: 'setPlaylist',
+    magnaKey: 'cloudPairedDevice', ui: 'false', theme: 'cl', loungeIdToken: token
+  }
+  const handshake = await postLounge('/bc/bind', {
+    RID: '0', VER: '8', CVER: '1', TYPE: 'bind', auth_failure_option: 'send_error'
+  }, details, token)
+  const { sid, gsessionid } = extractLoungeSessionIds(handshake)
+  const body: Record<string, string> = {
+    count: '1', ofs: '0', req0__sc: command, ...Object.fromEntries(Object.entries(fields).map(([key, value]) => ['req0_' + key, value]))
+  }
+  if (command === 'setPlaylist') {
+    body.req0_listId = ''
+    body.req0_audioOnly = 'false'
+    body.req0_prioritizeMobileSenderPlaybackStateOnConnection = 'true'
+    body.req0_params = ''
+    body.req0_playerParams = ''
+  }
+  await postLounge('/bc/bind', {
+    SID: sid, gsessionid, RID: '1', VER: '8', CVER: '1', TYPE: 'bind',
+    v: '2', t: '1', AID: '0', CI: '0', name: 'LokTube', id: cid,
+    device: 'REMOTE_CONTROL', loungeIdToken: token
+  }, body, token)
 }

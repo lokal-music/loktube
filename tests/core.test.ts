@@ -17,6 +17,7 @@ import { dropIndexAt } from '../src/renderer/src/tabs/pointerReorder'
 import { removeHomeNewsShelves, isNewsShelfHeading, isNewsBroadcaster, excludeHomeNewsBroadcasters } from '../src/main/homeNewsFilter'
 import { assertPlayableVideo, getPlayableResponse } from '../src/main/playbackAvailability'
 import { parseLoungeFrames, extractLoungeSessionIds, validYoutubeVideoIds } from '../src/main/loungeProtocol'
+import { CAST_SERVICE, dnsQuery, parseCastDnsPacket, collectCastDevices, encodeCastMessage, decodeCastMessage } from '../src/main/googleCastProtocol'
 
 const policy = new RequestPolicy(['easylist', 'easyprivacy'].map((name) => readFileSync(`resources/filters/${name}.txt`, 'utf8')).join('\n'))
 
@@ -791,4 +792,57 @@ test('YouTube TV playback IDs are validated and deduplicated', () => {
   assert.deepEqual(validYoutubeVideoIds(['jNQXAC9IVRw', 'jNQXAC9IVRw']), ['jNQXAC9IVRw'])
   assert.throws(() => validYoutubeVideoIds(['https://www.youtube.com/watch?v=jNQXAC9IVRw']), /Invalid YouTube/)
   assert.throws(() => validYoutubeVideoIds(Array(101).fill('jNQXAC9IVRw')), /queue/)
+})
+
+test('Google Cast mDNS decoder discovers a receiver and rejects malformed pointers', () => {
+  const name = (value: string) => Buffer.concat([
+    ...value.split('.').map((part) => Buffer.concat([Buffer.from([Buffer.byteLength(part)]), Buffer.from(part)])),
+    Buffer.from([0])
+  ])
+  const entry = 'Living Room._googlecast._tcp.local'
+  const target = 'cast-device.local'
+  const rr = (label: string, type: number, data: Buffer) => {
+    const hdr = Buffer.alloc(10)
+    hdr.writeUInt16BE(type, 0)
+    hdr.writeUInt16BE(1, 2)
+    hdr.writeUInt32BE(120, 4)
+    hdr.writeUInt16BE(data.length, 8)
+    return Buffer.concat([name(label), hdr, data])
+  }
+  const srv = Buffer.concat([Buffer.from([0, 0, 0, 0, 0x1f, 0x49]), name(target)])
+  const txtFields = ['id=0123456789abcdef0123456789abcdef', 'fn=Living Room', 'md=Google Nest Hub']
+  const txt = Buffer.concat(txtFields.map((value) => Buffer.concat([Buffer.from([Buffer.byteLength(value)]), Buffer.from(value)])))
+  const header = Buffer.alloc(12)
+  header.writeUInt16BE(0x8400, 2)
+  header.writeUInt16BE(4, 6)
+  const packet = Buffer.concat([header,
+    rr(CAST_SERVICE, 12, name(entry)),
+    rr(entry, 33, srv), rr(entry, 16, txt),
+    rr(target, 1, Buffer.from([192, 168, 1, 42]))])
+  const records = parseCastDnsPacket(packet)
+  assert.deepEqual(collectCastDevices(records), [{
+    id: '0123456789abcdef0123456789abcdef', name: 'Living Room', model: 'Google Nest Hub',
+    host: '192.168.1.42', port: 8009
+  }])
+  const question = dnsQuery(CAST_SERVICE, 12)
+  assert.equal(question.readUInt16BE(4), 1)
+  assert.equal(question.readUInt16BE(question.length - 2), 0x8001)
+  const cyclic = Buffer.alloc(12 + 2 + 10)
+  cyclic.writeUInt16BE(1, 6)
+  cyclic[12] = 0xc0
+  cyclic[13] = 12
+  assert.throws(() => parseCastDnsPacket(cyclic), /DNS name/)
+})
+
+test('Google Cast V2 framing preserves namespace and rejects corrupt protobuf data', () => {
+  const message = {
+    sourceId: 'sender-0', destinationId: 'receiver-0',
+    namespace: 'urn:x-cast:com.google.cast.receiver',
+    payload: JSON.stringify({ type: 'GET_STATUS', requestId: 7 })
+  }
+  const framed = encodeCastMessage(message)
+  assert.equal(framed.readUInt32BE(0), framed.length - 4)
+  assert.deepEqual(decodeCastMessage(framed.subarray(4)), message)
+  assert.throws(() => decodeCastMessage(Buffer.from([0x12, 0xff])), /Truncated protobuf integer/)
+  assert.throws(() => encodeCastMessage({ ...message, payload: 'x'.repeat(66000) }), /too large/)
 })

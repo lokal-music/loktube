@@ -73,6 +73,10 @@ declare global {
       forgetCastScreen: (id: string) => Promise<void>
       playOnCastScreen: (request: import('../../shared/ipc').CastPlayRequest) => Promise<void>
       stopCastScreen: (id: string) => Promise<void>
+      discoverGoogleCast: () => Promise<import('../../shared/ipc').GoogleCastDevice[]>
+      getGoogleCastState: () => Promise<import('../../shared/ipc').GoogleCastState | null>
+      playOnGoogleCast: (request: import('../../shared/ipc').GoogleCastPlayRequest) => Promise<import('../../shared/ipc').GoogleCastState>
+      controlGoogleCast: (action: import('../../shared/ipc').GoogleCastAction, value?: number) => Promise<import('../../shared/ipc').GoogleCastState | null>
       getVideoComments: (videoId: string, cursor?: string) => Promise<import('../../shared/ipc').VideoCommentsResponse>
       setVideoRating: (videoId: string, rating: import('../../shared/ipc').VideoRating) => Promise<import('../../shared/ipc').VideoRatingResponse>
       getVideoInfo: (videoId: string) => Promise<VideoInfoResponse>
