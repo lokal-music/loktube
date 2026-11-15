@@ -20,6 +20,7 @@ const DEVICE_TTL_MS = 120000
 
 const knownDevices = new Map<string, { device: NetworkCastDevice; time: number }>()
 let activeSession: { device: NetworkCastDevice; screenId: string; connection: CastConnection; state: 'playing' | 'paused' } | null = null
+let interruptedSession: { device: NetworkCastDevice; state: 'playing' | 'paused'; time: number } | null = null
 
 
 export async function discoverGoogleCast(): Promise<NetworkCastDevice[]> {
@@ -163,7 +164,10 @@ class CastConnection {
     clearInterval(this.heartbeat)
     this.events.emit('failure', error)
     this.socket.destroy()
-    if (activeSession?.connection === this) activeSession = null
+    if (activeSession?.connection === this) {
+      interruptedSession = { device: activeSession.device, state: activeSession.state, time: Date.now() }
+      activeSession = null
+    }
   }
 
   private onData(chunk: Buffer) {
@@ -278,8 +282,33 @@ class CastConnection {
 }
 
 export function getGoogleCastSession(): GoogleCastState | null {
-  if (!activeSession) return null
-  return { deviceId: activeSession.device.id, deviceName: activeSession.device.name, state: activeSession.state, volume: activeSession.connection.volume }
+  if (activeSession) return {
+    deviceId: activeSession.device.id, deviceName: activeSession.device.name,
+    state: activeSession.state, connected: true, volume: activeSession.connection.volume
+  }
+  if (interruptedSession && Date.now() - interruptedSession.time < 10 * 60_000) return {
+    deviceId: interruptedSession.device.id, deviceName: interruptedSession.device.name,
+    state: interruptedSession.state, connected: false, volume: null
+  }
+  interruptedSession = null
+  return null
+}
+
+async function restoreGoogleCast(): Promise<NonNullable<typeof activeSession>> {
+  if (activeSession) return activeSession
+  const missing = interruptedSession
+  if (!missing || Date.now() - missing.time >= 10 * 60_000)
+    throw new Error('No active Cast receiver. Select a device from the list again.')
+  const connection = await CastConnection.open(missing.device)
+  try {
+    const screenId = await connection.openYoutube()
+    activeSession = { device: missing.device, screenId, connection, state: missing.state }
+    interruptedSession = null
+    return activeSession
+  } catch (error) {
+    connection.close()
+    throw new Error('Could not reconnect to the Cast receiver. Rescan the network and select it again.', { cause: error })
+  }
 }
 
 export async function playOnGoogleCast(request: GoogleCastPlayRequest): Promise<GoogleCastState> {
@@ -299,6 +328,7 @@ export async function playOnGoogleCast(request: GoogleCastPlayRequest): Promise<
     })
     const previous = activeSession
     activeSession = { device, screenId, connection, state: 'playing' }
+    interruptedSession = null
     if (previous && previous.connection !== connection) {
       try { await commandUnpairedYoutubeScreen(previous.screenId, 'clearPlaylist', {}) }
       catch { /* Do not roll back a successful handoff on a stale device. */ }
@@ -311,9 +341,9 @@ export async function playOnGoogleCast(request: GoogleCastPlayRequest): Promise<
   }
 }
 
-export async function controlGoogleCast(action: 'play' | 'pause' | 'seek' | 'stop' | 'volume', value?: number): Promise<GoogleCastState | null> {
-  const current = activeSession
-  if (!current) throw new Error('No active Google Cast session. Select a device again.')
+export async function controlGoogleCast(action: 'play' | 'pause' | 'seek' | 'stop' | 'volume' | 'reconnect', value?: number): Promise<GoogleCastState | null> {
+  const current = await restoreGoogleCast()
+  if (action === 'reconnect') return getGoogleCastSession()
   if (action === 'volume') {
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) throw new Error('Volume must be between 0 and 100%')
     await current.connection.setVolume(value)
@@ -331,5 +361,6 @@ export async function controlGoogleCast(action: 'play' | 'pause' | 'seek' | 'sto
 export function closeGoogleCast(): void {
   const session = activeSession
   activeSession = null
+  interruptedSession = null
   session?.connection.close()
 }
