@@ -3,7 +3,7 @@ import { networkInterfaces } from 'node:os'
 import { connect, type TLSSocket } from 'node:tls'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import type { CastPlayRequest } from '../shared/ipc'
+import type { GoogleCastPlayRequest, GoogleCastState } from '../shared/ipc'
 import { CAST_SERVICE, collectCastDevices, decodeCastMessage, dnsQuery, encodeCastMessage, parseCastDnsPacket, type DnsRecord, type NetworkCastDevice } from './googleCastProtocol'
 import { commandUnpairedYoutubeScreen } from './tvCast'
 import { validYoutubeVideoIds } from './loungeProtocol'
@@ -20,12 +20,6 @@ const DEVICE_TTL_MS = 120000
 const knownDevices = new Map<string, { device: NetworkCastDevice; time: number }>()
 let activeSession: { device: NetworkCastDevice; screenId: string; connection: CastConnection; state: 'playing' | 'paused' } | null = null
 
-export interface CastSessionState {
-  deviceId: string
-  deviceName: string
-  state: 'playing' | 'paused'
-  volume: number | null
-}
 
 export async function discoverGoogleCast(): Promise<NetworkCastDevice[]> {
   const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true })
@@ -130,7 +124,7 @@ class CastConnection {
         socket.off('timeout', timeout)
         if (error) { socket.destroy(); reject(error) } else resolve()
       }
-      const ready = () => done()
+      const ready = () => { socket.setTimeout(0); done() }
       const failed = (error: Error) => done(error)
       const timeout = () => done(new Error('Cast device did not respond to the connection.'))
       socket.once('secureConnect', ready)
@@ -239,12 +233,12 @@ class CastConnection {
   close() { this.fail(new Error('Cast session closed')) }
 }
 
-export function getGoogleCastSession(): CastSessionState | null {
+export function getGoogleCastSession(): GoogleCastState | null {
   if (!activeSession) return null
   return { deviceId: activeSession.device.id, deviceName: activeSession.device.name, state: activeSession.state, volume: activeSession.connection.volume }
 }
 
-export async function playOnGoogleCast(request: CastPlayRequest & { deviceId: string }): Promise<CastSessionState> {
+export async function playOnGoogleCast(request: GoogleCastPlayRequest): Promise<GoogleCastState> {
   if (!request || typeof request.deviceId !== 'string' || typeof request.videoId !== 'string' ||
       !/^[a-zA-Z0-9_-]{11}$/.test(request.videoId)) throw new Error('Choose a Cast device and a playable YouTube video')
   const known = knownDevices.get(request.deviceId)
