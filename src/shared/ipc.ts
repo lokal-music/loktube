@@ -51,6 +51,10 @@ export const IPC_CHANNELS = {
   CAST_SCREEN_FORGET: 'cast:screen:forget',
   CAST_SCREEN_PLAY: 'cast:screen:play',
   CAST_SCREEN_STOP: 'cast:screen:stop',
+  GOOGLE_CAST_DISCOVER: 'cast:google:discover',
+  GOOGLE_CAST_STATE: 'cast:google:state',
+  GOOGLE_CAST_PLAY: 'cast:google:play',
+  GOOGLE_CAST_CONTROL: 'cast:google:control',
   SESSION_GET_STATE: 'session:get-state',
   SESSION_CREATE_USER: 'session:create-user',
   SESSION_LOGIN: 'session:login',
@@ -365,6 +369,29 @@ export interface CastScreen {
   id: string
   name: string
 }
+
+
+export interface GoogleCastDevice {
+  id: string
+  name: string
+  model: string
+}
+
+export interface GoogleCastState {
+  deviceId: string
+  deviceName: string
+  state: 'playing' | 'paused'
+  volume: number | null
+}
+
+export interface GoogleCastPlayRequest {
+  deviceId: string
+  videoId: string
+  videoIds?: string[]
+  position?: number
+}
+
+export type GoogleCastAction = 'play' | 'pause' | 'stop' | 'seek' | 'volume'
 
 export interface CastPlayRequest {
   screenId: string
