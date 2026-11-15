@@ -90,7 +90,9 @@ export function useTheaterHeaderReveal(active: boolean): boolean {
         idleTimer = undefined
         if (!shown) return
         if (pointerHeld || protectedInteraction()) {
-          if (pointerHeld) armIdle()
+          // Recheck after an open menu closes; its dismissal may not move
+          // focus or generate another pointer event.
+          armIdle()
           return
         }
         // The tab that was clicked remains focused after navigation. CSS
