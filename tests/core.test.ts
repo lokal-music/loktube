@@ -16,6 +16,7 @@ import { decodeTabSession, encodeTabSession, TAB_SESSION_KEY } from '../src/rend
 import { dropIndexAt } from '../src/renderer/src/tabs/pointerReorder'
 import { removeHomeNewsShelves, isNewsShelfHeading, isNewsBroadcaster, excludeHomeNewsBroadcasters } from '../src/main/homeNewsFilter'
 import { assertPlayableVideo, getPlayableResponse } from '../src/main/playbackAvailability'
+import { parseLoungeFrames, extractLoungeSessionIds, validYoutubeVideoIds } from '../src/main/loungeProtocol'
 
 const policy = new RequestPolicy(['easylist', 'easyprivacy'].map((name) => readFileSync(`resources/filters/${name}.txt`, 'utf8')).join('\n'))
 
@@ -773,4 +774,21 @@ test('pointer tab insertion follows neighboring centers without jumping during d
   assert.equal(dropIndexAt(301,3,centers),2)
   assert.equal(dropIndexAt(550,0,centers),2)
   assert.equal(dropIndexAt(750,0,centers),3)
+})
+
+
+test('YouTube TV Lounge sessions parse framed messages and reject malformed replies', () => {
+  const message = JSON.stringify([[0, ['c', 'screen-session', '']], [1, ['S', 'global-session']]])
+  const framed = `${message.length}\n${message}`
+  assert.deepEqual(extractLoungeSessionIds(framed), { sid: 'screen-session', gsessionid: 'global-session' })
+  assert.deepEqual(parseLoungeFrames(framed).map((entry) => entry[0]), ['c', 'S'])
+  assert.throws(() => extractLoungeSessionIds('3\n[]'), /active YouTube session/)
+  assert.throws(() => parseLoungeFrames('99\n[]'), /truncated/)
+  assert.throws(() => parseLoungeFrames('5\nhello'), /invalid JSON/)
+})
+
+test('YouTube TV playback IDs are validated and deduplicated', () => {
+  assert.deepEqual(validYoutubeVideoIds(['jNQXAC9IVRw', 'jNQXAC9IVRw']), ['jNQXAC9IVRw'])
+  assert.throws(() => validYoutubeVideoIds(['https://www.youtube.com/watch?v=jNQXAC9IVRw']), /Invalid YouTube/)
+  assert.throws(() => validYoutubeVideoIds(Array(101).fill('jNQXAC9IVRw')), /queue/)
 })
