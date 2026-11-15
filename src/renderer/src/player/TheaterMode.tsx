@@ -49,8 +49,9 @@ export function TheaterModeProvider({ children }: { children: ReactNode }) {
 }
 
 // An immediate CSS :hover retracts mid-animation when the pointer moves off the
-// edge trigger. Retain the reveal while crossing into the toolbar or its menus.
-// Once open, hit-test the actual header: no invisible hold-open area below it.
+// edge trigger. Keep the reveal while crossing the toolbar, but do not let an
+// inactive pointer or a mouse-focused tab button pin the header open forever.
+// Keyboard navigation, text entry and open menus must remain usable.
 export function useTheaterHeaderReveal(active: boolean): boolean {
   const [visible, setVisible] = useState(false)
   useEffect(() => {
@@ -59,19 +60,63 @@ export function useTheaterHeaderReveal(active: boolean): boolean {
     let shown = false
     let lastX = Number.POSITIVE_INFINITY
     let lastY = Number.POSITIVE_INFINITY
-    let timer: ReturnType<typeof setTimeout> | undefined
+    let pointerFocused = false
+    let pointerHeld = false
+    let autoHiding = false
+    let hideTimer: ReturnType<typeof setTimeout> | undefined
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
     const toolbar = '.wt-topbar, .wt-tabbar, .wt-theater-top-edge'
-    const cancel = () => { if (timer) { clearTimeout(timer); timer = undefined } }
-    const show = () => { cancel(); shown = true; setVisible(true) }
-    const focused = () => !!document.activeElement?.closest(toolbar)
+    const idleDelay = 2500
+    const cancelHide = () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = undefined } }
+    const cancelIdle = () => { if (idleTimer) { clearTimeout(idleTimer); idleTimer = undefined } }
+    const focusedElement = (): HTMLElement | null => {
+      const element = document.activeElement
+      return element instanceof HTMLElement && element.closest(toolbar) ? element : null
+    }
+    const focused = () => !!focusedElement()
     const hovered = () => Number.isFinite(lastX) && Number.isFinite(lastY) &&
       !!document.elementFromPoint(lastX, lastY)?.closest(toolbar)
+    const protectedInteraction = () => {
+      const element = focusedElement()
+      return !!document.querySelector('.wt-topbar [role="dialog"], [role="menu"][aria-label="Tab options"]') ||
+        !!element && (
+          !pointerFocused ||
+          !!element.closest('[role="dialog"], [role="menu"]') ||
+          element.matches('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"]')
+        )
+    }
+    const retract = () => { shown = false; setVisible(false) }
+    const armIdle = () => {
+      cancelIdle()
+      idleTimer = setTimeout(() => {
+        idleTimer = undefined
+        if (!shown) return
+        if (pointerHeld || protectedInteraction()) {
+          // Recheck after an open menu closes; its dismissal may not move
+          // focus or generate another pointer event.
+          armIdle()
+          return
+        }
+        // The tab that was clicked remains focused after navigation. CSS
+        // :focus-within would otherwise keep the header visible even if the
+        // hook marks it hidden. Only release *mouse-origin* button focus.
+        const element = focusedElement()
+        if (element && pointerFocused) {
+          autoHiding = true
+          element.blur()
+          autoHiding = false
+        }
+        if (!focused()) retract()
+      }, idleDelay)
+    }
+    const show = () => { cancelHide(); shown = true; setVisible(true); armIdle() }
     const hideLater = () => {
-      if (timer || focused()) return
-      timer = setTimeout(() => {
-        timer = undefined
+      if (hideTimer || focused()) return
+      hideTimer = setTimeout(() => {
+        hideTimer = undefined
         if (focused() || hovered()) return
-        shown = false; setVisible(false)
+        cancelIdle()
+        retract()
       }, 180)
     }
     const move = (event: PointerEvent) => {
@@ -82,20 +127,52 @@ export function useTheaterHeaderReveal(active: boolean): boolean {
       if ((!shown && lastY <= 36) || target?.closest(toolbar)) show()
       else hideLater()
     }
-    const focus = () => { if (focused() || hovered()) show(); else hideLater() }
+    const down = (event: PointerEvent) => {
+      if (event.target instanceof Element && event.target.closest(toolbar)) {
+        pointerFocused = true
+        pointerHeld = true
+        show()
+      }
+    }
+    const up = () => { pointerHeld = false }
+    const keyboard = (event: KeyboardEvent) => {
+      if (!focused()) return
+      pointerFocused = false
+      if (!event.repeat) show()
+    }
+    const focus = () => {
+      if (autoHiding) return
+      if (focused() || hovered()) show()
+      else hideLater()
+    }
     const leave = () => { lastY = Number.POSITIVE_INFINITY; hideLater() }
     const fullscreen = () => {
-      if (document.fullscreenElement) { cancel(); shown = false; setVisible(false) }
+      if (document.fullscreenElement) { cancelHide(); cancelIdle(); retract() }
     }
+    // Activation often follows a tab click made *before* this hook was active.
+    // Mouse-focused tab buttons are not :focus-visible; keyboard-focused ones
+    // retain the usual focus-within accessibility behavior.
+    const initialFocus = focusedElement()
+    pointerFocused = !!initialFocus?.closest('.wt-tabbar') && !initialFocus.matches(':focus-visible')
+    if (initialFocus) show()
     document.addEventListener('pointermove', move, true)
+    document.addEventListener('pointerdown', down, true)
+    document.addEventListener('pointerup', up, true)
+    document.addEventListener('pointercancel', up, true)
     document.addEventListener('pointerleave', leave)
+    document.addEventListener('keydown', keyboard, true)
     document.addEventListener('focusin', focus)
     document.addEventListener('focusout', focus)
     document.addEventListener('fullscreenchange', fullscreen)
     return () => {
-      cancel()
+      cancelHide()
+      cancelIdle()
       document.removeEventListener('pointermove', move, true)
+      document.removeEventListener('pointerdown', down, true)
+      document.removeEventListener('pointerup', up, true)
+      document.removeEventListener('pointercancel', up, true)
       document.removeEventListener('pointerleave', leave)
+      document.removeEventListener('keydown', keyboard, true)
       document.removeEventListener('focusin', focus)
       document.removeEventListener('focusout', focus)
       document.removeEventListener('fullscreenchange', fullscreen)
