@@ -381,6 +381,7 @@ export interface GoogleCastState {
   deviceId: string
   deviceName: string
   state: 'playing' | 'paused'
+  connected: boolean
   volume: number | null
 }
 
@@ -391,7 +392,7 @@ export interface GoogleCastPlayRequest {
   position?: number
 }
 
-export type GoogleCastAction = 'play' | 'pause' | 'stop' | 'seek' | 'volume'
+export type GoogleCastAction = 'play' | 'pause' | 'stop' | 'seek' | 'volume' | 'reconnect'
 
 export interface CastPlayRequest {
   screenId: string
