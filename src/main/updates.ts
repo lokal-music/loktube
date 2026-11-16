@@ -1,3 +1,4 @@
+import { isIncognito } from './incognito'
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS, type UpdateState } from '../shared/ipc'
@@ -16,7 +17,7 @@ function publish(change: Partial<UpdateState>) {
 }
 
 async function check(): Promise<UpdateState> {
-  if (!app.isPackaged || ['downloading', 'downloaded'].includes(state.status)) return state
+  if (isIncognito || !app.isPackaged || ['downloading', 'downloaded'].includes(state.status)) return state
   if (checking) return checking
   checking = (async () => {
     try { await autoUpdater.checkForUpdates() }
@@ -41,7 +42,7 @@ export function registerUpdates(): void {
   ipcMain.handle(IPC_CHANNELS.UPDATES_STATE, () => state)
   ipcMain.handle(IPC_CHANNELS.UPDATES_CHECK, () => check())
   ipcMain.handle(IPC_CHANNELS.UPDATES_DOWNLOAD, () => {
-    if (!app.isPackaged || state.status !== 'available') return downloading ?? state
+    if (isIncognito || !app.isPackaged || state.status !== 'available') return downloading ?? state
     publish({ status: 'downloading', percent: 0, error: undefined })
     downloading = autoUpdater.downloadUpdate().then(() => state).catch((failure) => {
       publish({ status: 'error', error: failure instanceof Error ? failure.message : String(failure) })

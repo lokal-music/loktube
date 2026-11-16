@@ -1,3 +1,4 @@
+import { isIncognito } from './incognito'
 import { app } from 'electron'
 import { pbkdf2Sync, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -311,6 +312,7 @@ let writeQueue: Promise<void> = Promise.resolve()
 
 async function loadDb(): Promise<LocalDb> {
   if (cache) return cache
+  if (isIncognito) { cache = emptyDb(); return cache }
   try {
     cache = normalizeDb(JSON.parse(await readFile(dbPath(), 'utf-8')))
   } catch {
@@ -322,6 +324,7 @@ async function loadDb(): Promise<LocalDb> {
 
 async function persistDb(db: LocalDb): Promise<void> {
   cache = db
+  if (isIncognito) return
   writeQueue = writeQueue.then(async () => {
     await mkdir(dirname(dbPath()), { recursive: true })
     await writeFile(dbPath(), JSON.stringify(db), 'utf-8')
@@ -630,6 +633,7 @@ export async function recordActiveHistoryEntry(entry: Omit<HistoryEntry, 'watche
 }
 
 export async function recordProfileHistoryEntry(profileId: string, entry: Omit<HistoryEntry, 'watchedAt'>): Promise<void> {
+  if (isIncognito) return
   const db = await loadDb()
   const profile = db.profiles.find((candidate) => candidate.id === profileId)
   if (!profile) return
@@ -752,6 +756,7 @@ export async function listActiveSearchHistory(): Promise<SearchHistoryEntry[]> {
 }
 
 export async function recordActiveSearchQuery(query: string): Promise<SearchHistoryEntry[]> {
+  if (isIncognito) return []
   const db = await loadDb()
   const profile = requireActiveProfile(db)
   const normalizedQuery = normalizeName(query)

@@ -49,11 +49,19 @@ jobs:
       - name: Desktop integration tests
         if: runner.os == 'Linux' && env.SKIP_TESTS != 'true'
         run: timeout --signal=TERM --kill-after=5s 90s xvfb-run -a pnpm test:desktop
+      - name: Incognito isolation tests
+        if: runner.os == 'Linux' && env.SKIP_TESTS != 'true'
+        run: timeout --signal=TERM --kill-after=5s 60s xvfb-run -a node tests/desktop-incognito.cjs
       - name: Package installers
         run: pnpm package --x64
       - name: Test packaged Linux application
         if: runner.os == 'Linux' && env.SKIP_TESTS != 'true'
         run: xvfb-run -a pnpm test:desktop
+        env:
+          WORLDTUBE_SMOKE_APP: release/linux-unpacked/loktube
+      - name: Test packaged incognito isolation
+        if: runner.os == 'Linux' && env.SKIP_TESTS != 'true'
+        run: xvfb-run -a node tests/desktop-incognito.cjs
         env:
           WORLDTUBE_SMOKE_APP: release/linux-unpacked/loktube
       - name: Include source and checksums

@@ -1,3 +1,4 @@
+import { isIncognito, configureIncognito, openIncognito, incognitoRoute } from './incognito'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { loktubeProtocolToRoute } from './externalYoutubeLinks'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -81,7 +82,8 @@ for (const stream of [process.stdout, process.stderr]) {
 app.setName('LokTube')
 // Use the installer app ID for Windows media controls and shell integration.
 if (process.platform === 'win32') app.setAppUserModelId('com.riberojuanca.worldtube')
-app.setPath('userData', join(app.getPath('appData'), 'worldtube'))
+if (isIncognito) configureIncognito()
+else app.setPath('userData', join(app.getPath('appData'), 'worldtube'))
 const primaryInstance = app.requestSingleInstanceLock()
 if (!primaryInstance) app.quit()
 
@@ -144,12 +146,14 @@ if (process.platform === 'linux') {
 
 let accountOperation: Promise<unknown> | null = null
 function changeAccount<T>(operation: () => Promise<T>): Promise<T> {
+  if (isIncognito) return Promise.reject(new Error('Sign-in is unavailable in incognito. Close this window to use your account.'))
   if (accountOperation) return Promise.reject(new Error('Another account operation is in progress'))
   const pending = operation().finally(() => { if (accountOperation === pending) accountOperation = null })
   accountOperation = pending
   return pending
 }
 
+ipcMain.handle(IPC_CHANNELS.INCOGNITO_OPEN, (_event, route?: string) => openIncognito(route))
 ipcMain.handle(IPC_CHANNELS.YOUTUBE_ACCOUNT_STATE, () => youtubeAccountState())
 function senderWindow(event: Electron.IpcMainInvokeEvent): BrowserWindow {
   const window = BrowserWindow.fromWebContents(event.sender)
@@ -215,7 +219,7 @@ ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_EXPORT, async (event) => {
 function createWindow(): void {
   const icon = app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(app.getAppPath(), 'resources/icon.png')
   const mainWindow = new BrowserWindow({
-    title: 'LokTube',
+    title: isIncognito ? 'LokTube — Incognito' : 'LokTube',
     frame: false,
     icon,
     width: 1280,
@@ -223,6 +227,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
+      ...(isIncognito ? { partition: 'incognito', additionalArguments: ['--loktube-incognito'] } : {}),
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
       contextIsolation: true,
@@ -308,9 +313,9 @@ function createWindow(): void {
   })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + (isIncognito ? '#' + incognitoRoute(process.env.LOKTUBE_INCOGNITO_ROUTE) : ''))
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'), isIncognito ? { hash: incognitoRoute(process.env.LOKTUBE_INCOGNITO_ROUTE) } : {})
   }
 }
 
@@ -378,6 +383,7 @@ ipcMain.handle(IPC_CHANNELS.SEARCH_SUGGESTIONS, async (_event, { query }: Search
 })
 
 ipcMain.handle(IPC_CHANNELS.GET_HOME_FEED, async (): Promise<SearchResponse> => {
+  if (isIncognito) return { ok: true, data: [], home: { shorts: [], hasMore: false } }
   try {
     const data = await getHomeDiscovery()
     return { ok: true, data: data.videos, home: data.home }
@@ -461,6 +467,7 @@ ipcMain.handle(IPC_CHANNELS.DATA_EXPORT, async (event): Promise<string | null> =
 })
 
 ipcMain.handle(IPC_CHANNELS.DATA_IMPORT, async (event): Promise<LocalSessionState | null> => {
+  if (isIncognito) throw new Error('Data import is unavailable in incognito')
   const ownerWindow = BrowserWindow.fromWebContents(event.sender)
   if (!ownerWindow) throw new Error('No app window')
   const result = await dialog.showOpenDialog(ownerWindow, {
@@ -512,13 +519,13 @@ ipcMain.handle(IPC_CHANNELS.SUBSCRIPTIONS_REMOVE, (_event, channelId: string) =>
 app.whenReady().then(async () => {
   if (!primaryInstance) return
   // Developer checkouts must not replace the installed protocol handler.
-  if (app.isPackaged) {
+  if (app.isPackaged && !isIncognito) {
     try {
       if (!app.setAsDefaultProtocolClient('loktube'))
         console.warn('[deep-link] OS protocol registration unavailable')
     } catch { console.warn('[deep-link] OS protocol registration failed') }
   }
-  await initializeDiagnostics(join(app.getPath('userData'), 'logs'))
+  if (!isIncognito) await initializeDiagnostics(join(app.getPath('userData'), 'logs'))
   console.info(`LokTube ${app.getVersion()} starting on ${process.platform} ${process.arch}`)
   await initializeProtection()
   await removeAbandonedLoginProfiles()
@@ -528,7 +535,7 @@ app.whenReady().then(async () => {
   }
   createWindow()
   for (const arg of process.argv.slice(1)) acceptExternalLink(arg)
-  void checkForUpdatesOnStartup()
+  if (!isIncognito) void checkForUpdatesOnStartup()
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -549,7 +556,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => { cancelInAppYoutubeSignIn(); cancelBrowserLogin() })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (isIncognito || process.platform !== 'darwin') {
     app.quit()
   }
 })

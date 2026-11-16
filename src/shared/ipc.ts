@@ -1,6 +1,7 @@
 // Shared between main and renderer so both sides agree on channel names and payload shapes.
 
 export const IPC_CHANNELS = {
+  INCOGNITO_OPEN: 'incognito:open',
   WINDOW_STATE: 'window:state',
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_MAXIMIZE: 'window:maximize',
