@@ -31,6 +31,8 @@ import type {
 declare global {
   interface Window {
     api: {
+      readonly isIncognito: boolean
+      openIncognito: (route?: string) => Promise<void>
       getWindowState: () => Promise<{ maximized: boolean }>
       minimizeWindow: () => Promise<void>
       toggleMaximizeWindow: () => Promise<void>

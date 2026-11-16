@@ -12,6 +12,7 @@ import {
 } from 'react'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
+  Glasses,
   ArrowDownRight,
   ArrowLeft,
   ArrowRight,
@@ -106,6 +107,7 @@ function Icon({ name, className = 'h-5 w-5' }: { name: IconName; className?: str
 
 function ProfileMenu() {
   const { youtubeAccount } = useProfiles()
+  if (window.api.isIncognito) return <span className="flex items-center gap-2 rounded-full bg-violet-400/10 px-3 text-sm text-violet-200"><Glasses aria-hidden="true" className="h-4 w-4" />{t('Incognito')}</span>
   return <Link to="/account" aria-label="YouTube account" title={youtubeAccount.name ?? 'Sign in to YouTube'}
     className="flex h-10 min-w-0 items-center gap-2 rounded px-2 text-sm text-neutral-200 hover:bg-neutral-800">
     {youtubeAccount.avatarUrl ? <img src={youtubeAccount.avatarUrl} alt="" className="h-7 w-7 rounded-full" />
@@ -285,6 +287,32 @@ function WindowControls() {
   </div>
 }
 
+function IncognitoButton() {
+  const [error, setError] = useState<string | null>(null)
+  return <div className="relative flex">
+    <button type="button" title={t(window.api.isIncognito ? 'Close incognito' : 'New incognito window')}
+      aria-label={t(window.api.isIncognito ? 'Close incognito' : 'New incognito window')}
+      onClick={() => {
+        if (window.api.isIncognito) void window.api.closeWindow()
+        else void window.api.openIncognito().catch(() => setError(t('Could not open incognito. Try again.')))
+      }}
+      className="grid h-10 w-10 place-items-center rounded text-neutral-300 hover:bg-neutral-800 hover:text-white">
+      {window.api.isIncognito ? <X className="h-5 w-5" /> : <Glasses className="h-5 w-5" />}
+    </button>
+    {error && <button role="alert" onClick={() => setError(null)} className="absolute right-0 top-full z-50 w-64 rounded bg-neutral-800 p-3 text-sm">{error}</button>}
+  </div>
+}
+
+function IncognitoHome() {
+  return <section className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center px-6 text-center">
+    <div className="mb-6 rounded-full bg-violet-400/10 p-6 text-violet-200"><Glasses className="h-12 w-12" aria-hidden="true" /></div>
+    <h1 className="text-3xl font-semibold text-neutral-100">{t('You’re browsing incognito')}</h1>
+    <p className="mt-4 text-neutral-400">{t('Search or open a video link to get started. No recommendations, watch history or search history.')}</p>
+    <p className="mt-3 text-sm text-neutral-500">{t('This window is signed out. Its temporary session is cleared when you close it. Your network provider and YouTube can still see your activity.')}</p>
+    <button type="button" onClick={() => void window.api.closeWindow()} className="mt-8 rounded border border-neutral-700 px-4 py-2 text-sm hover:bg-neutral-800">{t('Close incognito')}</button>
+  </section>
+}
+
 function TopNav() {
   useLocale()
   const navigate = useNavigate()
@@ -355,6 +383,7 @@ function TopNav() {
         </div>
 
         <div className="flex justify-end gap-1">
+          <IncognitoButton />
           <CastControl />
           <ProfileMenu />
           <WindowControls />
@@ -991,7 +1020,7 @@ function AppRoutes() {
   return (
     <ErrorBoundary key={`${location.pathname}:${revision}`}>
       <Routes>
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={window.api.isIncognito ? <IncognitoHome /> : <Home />} />
         <Route path="/search" element={<Search />} />
         <Route path="/history" element={<History />} />
         <Route path="/subscriptions" element={<Subscriptions />} />
@@ -1000,7 +1029,7 @@ function AppRoutes() {
         <Route path="/playlists" element={<Playlists />} />
         <Route path="/music" element={<Music />} />
         <Route path="/profile" element={<Navigate to="/saved" replace />} />
-        <Route path="/account" element={<Account />} />
+        <Route path="/account" element={window.api.isIncognito ? <IncognitoHome /> : <Account />} />
         <Route path="/channel/:channelId" element={<Channel />} />
         <Route path="/collection/:kind/:collectionId" element={<Collection />} />
         <Route path="/watch/:videoId" element={<Watch />} />

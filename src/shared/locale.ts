@@ -149,6 +149,14 @@ export const english: Record<string, string> = {
 }
 
 const spanish: Record<string, string> = {
+  "Incognito": "Incógnito",
+  "New incognito window": "Nueva ventana de incógnito",
+  "Close incognito": "Cerrar incógnito",
+  "Open in incognito": "Abrir en incógnito",
+  "Could not open incognito. Try again.": "No se pudo abrir el modo incógnito. Inténtalo de nuevo.",
+  "You’re browsing incognito": "Estás navegando en incógnito",
+  "Search or open a video link to get started. No recommendations, watch history or search history.": "Busca o abre un enlace de video para empezar. Sin recomendaciones ni historial de reproducción o búsqueda.",
+  "This window is signed out. Its temporary session is cleared when you close it. Your network provider and YouTube can still see your activity.": "Esta ventana no tiene sesión iniciada. Su sesión temporal se borra al cerrarla. Tu proveedor de red y YouTube aún pueden ver tu actividad.",
   'Window controls': 'Controles de la ventana',
   'Minimize window': 'Minimizar ventana',
   'Maximize window': 'Maximizar ventana',

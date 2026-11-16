@@ -432,7 +432,7 @@ export function TabLinkHandler({ children, onPlayInMiniPlayer }: { children: Rea
     const x = event.clientX || rect?.left || 0
     const y = event.clientY || rect?.top || 0
     setMenu({ path, videoId, title: card?.dataset.videoTitle ?? link?.textContent?.trim() ?? '',
-      x: Math.max(8, Math.min(x, window.innerWidth - 264)), y: Math.max(8, Math.min(y, window.innerHeight - (videoId ? 144 : 104))) })
+      x: Math.max(8, Math.min(x, window.innerWidth - 264)), y: Math.max(8, Math.min(y, window.innerHeight - (videoId ? 184 : 144))) })
   }
   function intercept(event: MouseEvent, middle = false) {
     if (middle ? event.button !== 1 : !event.ctrlKey && !event.metaKey) return
@@ -443,12 +443,18 @@ export function TabLinkHandler({ children, onPlayInMiniPlayer }: { children: Rea
     event.stopPropagation()
     open(href.slice(1), !event.shiftKey)
   }
+  const [incognitoError, setIncognitoError] = useState<string | null>(null)
   const itemClass = 'block w-full cursor-pointer rounded px-3 py-2 text-left text-sm text-neutral-100 hover:bg-neutral-800 focus:bg-neutral-800 focus:outline-none'
   return <div onClickCapture={intercept} onAuxClickCapture={(event) => intercept(event, true)} onContextMenu={contextMenu}>
     {children}
+    {incognitoError && <button role="alert" className="fixed bottom-6 right-6 z-[200] rounded bg-neutral-800 p-4 text-sm" onClick={() => setIncognitoError(null)}>{incognitoError}</button>}
     {menu && createPortal(<div ref={menuRef} role="menu" aria-label={t('Video options')} className="fixed z-[200] w-64 rounded border border-neutral-700 bg-neutral-900 p-1 shadow-xl" style={{ left: menu.x, top: menu.y }}>
       <button role="menuitem" className={itemClass} onClick={() => { open(menu.path, true, menu.title); setMenu(null) }}>{t('Open in new tab')}</button>
       <button role="menuitem" className={itemClass} onClick={() => { open(menu.path, false, menu.title); setMenu(null) }}>{t('Open in new tab and switch')}</button>
+      <button role="menuitem" className={itemClass} onClick={() => {
+        void window.api.openIncognito(menu.path).catch(() => setIncognitoError(t('Could not open incognito. Try again.')))
+        setMenu(null)
+      }}>{t('Open in incognito')}</button>
       {menu.videoId && <button role="menuitem" className={itemClass} onClick={() => { onPlayInMiniPlayer(menu.videoId!); setMenu(null) }}>{t('Play in mini player')}</button>}
     </div>, document.body)}
   </div>

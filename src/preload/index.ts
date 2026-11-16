@@ -35,6 +35,8 @@ import type {
 } from '../shared/ipc'
 
 const api = {
+  isIncognito: process.argv.includes('--loktube-incognito'),
+  openIncognito: (route?: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.INCOGNITO_OPEN, route),
   getWindowState: (): Promise<{ maximized: boolean }> => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_STATE),
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MINIMIZE),
   toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MAXIMIZE),

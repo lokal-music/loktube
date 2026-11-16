@@ -1,3 +1,4 @@
+import { incognitoRoute } from '../src/shared/incognito'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -845,4 +846,11 @@ test('Google Cast V2 framing preserves namespace and rejects corrupt protobuf da
   assert.deepEqual(decodeCastMessage(framed.subarray(4)), message)
   assert.throws(() => decodeCastMessage(Buffer.from([0x12, 0xff])), /Truncated protobuf integer/)
   assert.throws(() => encodeCastMessage({ ...message, payload: 'x'.repeat(66000) }), /too large/)
+})
+
+test('incognito only accepts internal browsing routes', () => {
+  for (const path of ['/', '/search?q=private%20video', '/watch/jNQXAC9IVRw', '/channel/UCfixture', '/collection/PLfixture?kind=playlist', '/music'])
+    assert.equal(incognitoRoute(path), path)
+  for (const path of [null, 123, '//evil.test', 'https://evil.test', 'javascript:alert(1)', '/account', '/search\\\\evil', '/search\nother', '/search?q=' + 'x'.repeat(4096)])
+    assert.equal(incognitoRoute(path), '/')
 })
