@@ -25,9 +25,9 @@ function assetFor(assets, platform) {
   if (platform === 'linux') return available.find((asset) => /\.deb$/i.test(asset.name) && /amd64|x64/i.test(asset.name))
   if (platform === 'linux-appimage') return available.find((asset) => /\.AppImage$/i.test(asset.name) && !/arm64|aarch64|ia32/i.test(asset.name))
   const matches = available.filter((asset) => /\.dmg$/i.test(asset.name))
-  return matches.find((asset) => /universal/i.test(asset.name))
-    || matches.find((asset) => /x64/i.test(asset.name))
-    || matches[0]
+  if (platform === 'mac-arm64') return matches.find((asset) => /arm64|aarch64/i.test(asset.name))
+  if (platform === 'mac-x64') return matches.find((asset) => /x64|x86_64/i.test(asset.name))
+  return undefined
 }
 
 async function loadDownloads() {
@@ -56,9 +56,6 @@ async function loadDownloads() {
       if (button.dataset.platform === 'linux') {
         command.textContent = `mkdir -p "$HOME/Downloads" &&\ncd "$HOME/Downloads" &&\nwget -O LokTube.deb '${url.href.replaceAll("'", "%27")}' &&\nsudo apt install ./LokTube.deb`
         copyButton.disabled = false
-      }
-      if (button.dataset.platform === 'mac' && /arm64/i.test(asset.name)) {
-        button.lastChild.textContent = ' macOS (Apple Silicon)'
       }
       count++
     }
