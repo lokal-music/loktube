@@ -125,47 +125,160 @@ jobs:
 
   mac:
     needs: prepare
-    if: needs.prepare.outputs.published != 'true' && vars.ENABLE_MAC_RELEASE == 'true'
-    runs-on: macos-latest
+    if: needs.prepare.outputs.published != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            machine: arm64
+          - runner: macos-15-intel
+            arch: x64
+            machine: x86_64
+    runs-on: ${{ matrix.runner }}
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        if: runner.os == 'Windows'
-        with:
-          dotnet-version: '8.0.x'
+      - name: Verify release architecture and version
+        shell: bash
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          MACHINE: ${{ matrix.machine }}
+        run: |
+          test "$(uname -m)" = "$MACHINE"
+          test "v$(node -p "require('./package.json').version")" = "$TAG"
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
       - run: npm install --global corepack --force
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
-      - name: Ensure Electron runtime and license files are installed
-        run: node node_modules/electron/install.js
-      - name: Require signing credentials
+      - run: node node_modules/electron/install.js
+      - name: Typecheck and unit tests
+        run: |
+          pnpm typecheck
+          pnpm test
+      - name: Package macOS DMG and ZIP
+        shell: bash
         env:
+          ARCH: ${{ matrix.arch }}
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
-          test -n "$CSC_LINK" && test -n "$CSC_KEY_PASSWORD" && test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID"
-      - name: Package signed macOS release
-        run: pnpm release --arm64
+          set -euo pipefail
+          SIGNING_CREDENTIALS=0
+          for ITEM in "$CSC_LINK" "$CSC_KEY_PASSWORD" "$APPLE_ID" "$APPLE_APP_SPECIFIC_PASSWORD" "$APPLE_TEAM_ID"; do
+            if [ -n "$ITEM" ]; then SIGNING_CREDENTIALS=$((SIGNING_CREDENTIALS+1)); fi
+          done
+          if [ "$SIGNING_CREDENTIALS" = 5 ]; then
+            echo "Apple Developer ID credentials configured; signing/notarization requested."
+            pnpm package --"$ARCH"
+          elif [ "$SIGNING_CREDENTIALS" = 0 ]; then
+            echo "No Apple signing credentials: packaging an ad-hoc signed Mac build."
+            pnpm package --"$ARCH" -c.mac.identity=- -c.mac.hardenedRuntime=false
+          else
+            echo "Incomplete Apple signing credentials: require all five or none." >&2
+            exit 1
+          fi
+      - name: Verify native signature and packaged macOS application startup
+        shell: bash
+        env:
+          ARCH: ${{ matrix.arch }}
+          MACHINE: ${{ matrix.machine }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          test -s "release/LokTube-$VERSION-mac-$ARCH.dmg"
+          test -s "release/LokTube-$VERSION-mac-$ARCH.zip"
+          APP="$(find release -type d -name LokTube.app -print -quit)"
+          test -n "$APP"
+          test -x "$APP/Contents/MacOS/LokTube"
+          file "$APP/Contents/MacOS/LokTube" | grep -q "$MACHINE"
+          codesign --verify --deep --strict "$APP"
+          APP_EXE="$PWD/$APP/Contents/MacOS/LokTube" node <<'NODE'
+          const assert = require('node:assert/strict')
+          const { _electron: electron } = require('playwright')
+          ;(async () => {
+            const app = await electron.launch({ executablePath: process.env.APP_EXE, timeout: 60000 })
+            try {
+              const page = await app.firstWindow()
+              await page.locator('.wt-app-shell').waitFor({ timeout: 45000 })
+              await page.getByRole('link', { name: 'YouTube account', exact: true }).waitFor({ timeout: 45000 })
+              assert.match(await page.title(), /LokTube/)
+              console.log('PASS: native macOS packaged app launches and renders')
+            } finally {
+              await app.close()
+            }
+          })().catch(error => { console.error(error); process.exitCode = 1 })
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loktube-mac-${{ matrix.arch }}
+          path: |
+            release/LokTube-*-mac-${{ matrix.arch }}.dmg
+            release/LokTube-*-mac-${{ matrix.arch }}.zip
+          compression-level: 0
+          if-no-files-found: error
+
+  mac_upload:
+    needs: [prepare, mac]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: loktube-mac-*
+          path: mac-installers
+      - name: Verify installers and upload both macOS architectures to draft
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
+          for ARCH in arm64 x64; do
+            test -s "mac-installers/loktube-mac-$ARCH/LokTube-$VERSION-mac-$ARCH.dmg"
+            test -s "mac-installers/loktube-mac-$ARCH/LokTube-$VERSION-mac-$ARCH.zip"
+          done
+          gh release upload "$TAG" mac-installers/*/*.dmg mac-installers/*/*.zip --clobber
+          for ARCH in arm64 x64; do
+            gh release view "$TAG" --json assets --jq '.assets[].name' |
+              grep -Fx "LokTube-$VERSION-mac-$ARCH.dmg"
+          done
+      - name: Document Mac signing and Gatekeeper behavior
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          NOTES="$(gh release view "$TAG" --json body --jq .body)"
+          if ! grep -Fq 'Mac installer signing' <<<"$NOTES"; then
+            printf '%s\n\n' "$NOTES" > mac-notes.txt
+            cat >> mac-notes.txt <<'NOTES'
+          ## Mac installer signing
+
+          Apple Silicon and Intel DMG/ZIP installers are included. Developer ID signing
+          and notarization are used only when the corresponding Apple credentials
+          are configured. Otherwise, installers are ad-hoc signed and not notarized:
+          macOS may require explicit approval under System Settings → Privacy &
+          Security → Open Anyway. Mac auto-updates require Developer ID signing.
+          NOTES
+            gh release edit "$TAG" --notes-file mac-notes.txt
+          fi
 
   publish:
-    needs: [prepare, package, mac]
-    if: always() && needs.prepare.outputs.published != 'true' && needs.prepare.result == 'success' && (needs.package.result == 'success' || (needs.package.result == 'skipped' && needs.prepare.outputs.ready_assets == 'true')) && (needs.mac.result == 'success' || needs.mac.result == 'skipped')
+    needs: [prepare, package, mac, mac_upload]
+    if: always() && needs.prepare.outputs.published != 'true' && needs.prepare.result == 'success' && (needs.package.result == 'success' || (needs.package.result == 'skipped' && needs.prepare.outputs.ready_assets == 'true')) && needs.mac.result == 'success' && needs.mac_upload.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
