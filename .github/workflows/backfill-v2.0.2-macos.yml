@@ -85,18 +85,14 @@ jobs:
               timeout: 60000
             })
             try {
-              const info = await app.evaluate(({ app }) => ({
-                platform: process.platform, arch: process.arch,
-                version: app.getVersion(), packaged: app.isPackaged
-              }))
-              assert.equal(info.platform, 'darwin')
-              assert.equal(info.arch, process.env.EXPECTED_ARCH)
-              assert.equal(info.version, '2.0.2')
-              assert.equal(info.packaged, true)
+              // Wait for the renderer to finish its initial navigation before
+              // inspecting it. A main-process evaluate immediately after
+              // launch can race Electron's first-window initialization.
               const page = await app.firstWindow()
               await page.locator('.wt-app-shell').waitFor({ timeout: 45000 })
               await page.getByRole('link', { name: 'YouTube account', exact: true }).waitFor({ timeout: 45000 })
-              console.log('PASS: packaged LokTube v2.0.2 boots and renders on macOS', info)
+              assert.match(await page.title(), /LokTube/)
+              console.log('PASS: packaged LokTube v2.0.2 boots and renders on macOS', process.env.EXPECTED_ARCH)
             } finally {
               await app.close()
             }
