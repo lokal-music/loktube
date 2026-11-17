@@ -15,19 +15,24 @@ Download installers from the [LokTube download page](https://github.com/lokal-mu
 or [GitHub Releases](https://github.com/lokal-music/loktube/releases).
 Downloads become available only after a release is successfully published.
 
-Initial public release: [v0.0.3](https://github.com/lokal-music/loktube/releases/tag/v0.0.3),
-with Windows x64 and Linux x64 installers plus corresponding source.
+Current release: [LokTube v2.0.2](https://github.com/lokal-music/loktube/releases/tag/v2.0.2)
+with installers for Windows x64, Linux x64, macOS Apple Silicon (arm64) and
+macOS Intel (x64), and the corresponding source archive.
 
-The release configuration prepares Windows NSIS x64 and Linux AppImage/DEB x64.
-macOS DMG/ZIP ARM64 is opt-in and requires signing credentials. See
-[Packaging and Updates](docs/UPDATES.md) for setup and outstanding work.
+The release workflow builds both Mac architectures by default alongside
+Windows NSIS x64 and Linux AppImage/DEB x64. See
+[Packaging and Updates](docs/UPDATES.md) for current signing requirements.
 
 Windows: download the x64 `.exe` and follow the installer.
 Linux: download the x64 `.AppImage`, make it executable (`chmod +x LokTube-*.AppImage`),
 then run it. Debian/Ubuntu users can instead install the `.deb` from Releases.
 AppImage may require FUSE 2; `--appimage-extract-and-run` is an alternative on
-systems without it. Windows packages are initially unsigned; verify the source
-and download location. macOS downloads remain unavailable until signed builds exist.
+systems without it. Windows packages are currently unsigned; verify the source
+and download location. macOS: choose the Apple Silicon or Intel DMG for your
+hardware. The v2.0.2 Mac builds are ad-hoc signed, not Apple Developer ID signed
+or notarized. If Gatekeeper blocks launch, use macOS System Settings → Privacy &
+Security → Open Anyway for the app you trust. Automatic Mac updates require
+Developer ID signing and are not available for these v2.0.2 builds.
 
 ## 1.1.4
 
