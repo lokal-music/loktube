@@ -81,15 +81,23 @@ Var LTExisting
   File "/oname=$PLUGINSDIR\loktube.ico" "${BUILD_RESOURCES_DIR}\icon.ico"
 !macroend
 
+
+!macro customPageAfterChangeDir
+  Page custom LokTubeSetup
+!macroend
+
+
+!endif
+
+; Builder registers its NSIS plugins before expanding this hook. Functions
+; that use isUpdated, MUI or nsDialogs must be compiled here, not at include time.
+!macro customHeader
+!ifndef BUILD_UNINSTALLER
 Function LokTubeGUIInit
   SetCtlColors $HWNDPARENT F0F5FF 030509
   GetDlgItem $0 $HWNDPARENT 1028
   SetCtlColors $0 9CDDFF 030509
 FunctionEnd
-
-!macro customPageAfterChangeDir
-  Page custom LokTubeSetup
-!macroend
 
 Function LokTubeSetup
   ; In-app updates use /S; also skip any interactive --updated invocation.
@@ -173,3 +181,4 @@ Function LokTubeGUIInit
   SetCtlColors $HWNDPARENT F0F5FF 030509
 FunctionEnd
 !endif
+!macroend
