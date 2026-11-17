@@ -383,7 +383,6 @@ ipcMain.handle(IPC_CHANNELS.SEARCH_SUGGESTIONS, async (_event, { query }: Search
 })
 
 ipcMain.handle(IPC_CHANNELS.GET_HOME_FEED, async (): Promise<SearchResponse> => {
-  if (isIncognito) return { ok: true, data: [], home: { shorts: [], hasMore: false } }
   try {
     const data = await getHomeDiscovery()
     return { ok: true, data: data.videos, home: data.home }

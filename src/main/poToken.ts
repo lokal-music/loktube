@@ -6,10 +6,13 @@ import { registerBotGuardNetwork } from './botguardNetwork'
 
 export interface PoTokenInput {
   videoId: string
+  useWatchPage?: boolean
 }
 
 export interface PoTokenResult {
   poToken: string
+  playerResponse?: Record<string, unknown>
+  clientContext?: Record<string, unknown>
   /** Must be used as the InnerTube session's visitorData from here on — see script.ts. */
   visitorData: string
 }
@@ -75,6 +78,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 interface BotGuardWindow {
   view: WebContentsView
   visitorData: string
+  playerResponse?: Record<string, unknown>
+  clientContext?: Record<string, unknown>
   createdAt: number
 }
 
@@ -89,7 +94,7 @@ interface BotGuardWindow {
 // alive and reused across videos, refreshed only periodically.
 const BOTGUARD_WINDOW_TTL_MS = 30 * 60 * 1000
 
-async function createBotGuardWindow(): Promise<BotGuardWindow> {
+async function createBotGuardWindow(videoId?: string): Promise<BotGuardWindow> {
   console.log('[poToken] bundling botguard script...')
   const script = await getBundledScript()
   console.log(`[poToken] bundled (${script.length} chars), opening detached renderer...`)
@@ -130,17 +135,18 @@ async function createBotGuardWindow(): Promise<BotGuardWindow> {
     // doesn't call them — the trailing statement here is what makes the
     // awaited promise's resolved value what executeJavaScript returns.
     const initResult = (await withTimeout(
-      contents.executeJavaScript(`${script}\nglobalThis.__botguardInit__()`),
+      contents.executeJavaScript(`${script}\nglobalThis.__botguardInit__(${JSON.stringify(videoId ?? null)} ?? undefined)`),
       30_000,
       'executeJavaScript(botguard init)'
-    )) as { visitorData?: string } | undefined
+    )) as { visitorData?: string; playerResponse?: Record<string, unknown>; clientContext?: Record<string, unknown> } | undefined
 
     if (!initResult?.visitorData) {
       throw new Error(`BotGuard init did not return visitorData (got ${JSON.stringify(initResult)})`)
     }
 
     console.log('[poToken] BotGuard challenge solved, window ready for cheap per-video minting')
-    return { view, visitorData: initResult.visitorData, createdAt: Date.now() }
+    return { view, visitorData: initResult.visitorData, playerResponse: initResult.playerResponse,
+      clientContext: initResult.clientContext, createdAt: Date.now() }
   } catch (error) {
     console.error('[poToken] initialization failed:', error instanceof Error ? error.message : String(error))
     contents.close()
@@ -150,9 +156,9 @@ async function createBotGuardWindow(): Promise<BotGuardWindow> {
 
 let botguardWindowPromise: Promise<BotGuardWindow> | null = null
 
-function getBotGuardWindow(): Promise<BotGuardWindow> {
+function getBotGuardWindow(videoId?: string): Promise<BotGuardWindow> {
   if (!botguardWindowPromise) {
-    botguardWindowPromise = createBotGuardWindow().catch((error) => {
+    botguardWindowPromise = createBotGuardWindow(videoId).catch((error) => {
       botguardWindowPromise = null
       throw error
     })
@@ -181,15 +187,15 @@ async function mintFromWindow(botguard: BotGuardWindow, videoId: string): Promis
 async function generatePoTokenSerialized(input: PoTokenInput): Promise<PoTokenResult> {
   let botguard = await getBotGuardWindow()
 
-  if (Date.now() - botguard.createdAt > BOTGUARD_WINDOW_TTL_MS) {
+  if (input.useWatchPage || Date.now() - botguard.createdAt > BOTGUARD_WINDOW_TTL_MS) {
     console.log('[poToken] cached BotGuard window is past its TTL, refreshing...')
     resetBotGuardWindow(botguard)
-    botguard = await getBotGuardWindow()
+    botguard = await getBotGuardWindow(input.useWatchPage ? input.videoId : undefined)
   }
 
   try {
     const poToken = await mintFromWindow(botguard, input.videoId)
-    return { poToken, visitorData: botguard.visitorData }
+    return { poToken, visitorData: botguard.visitorData, playerResponse: botguard.playerResponse, clientContext: botguard.clientContext }
   } catch (error) {
     // The cached window/minter could be dead for reasons that only show up
     // at mint time (renderer crash, an integrity token YouTube rejected
@@ -197,9 +203,9 @@ async function generatePoTokenSerialized(input: PoTokenInput): Promise<PoTokenRe
     // window rather than failing every video until the app restarts.
     console.error('[poToken] mint against cached window failed, recreating once and retrying', error)
     resetBotGuardWindow(botguard)
-    const fresh = await getBotGuardWindow()
+    const fresh = await getBotGuardWindow(input.useWatchPage ? input.videoId : undefined)
     const poToken = await mintFromWindow(fresh, input.videoId)
-    return { poToken, visitorData: fresh.visitorData }
+    return { poToken, visitorData: fresh.visitorData, playerResponse: fresh.playerResponse, clientContext: fresh.clientContext }
   }
 }
 

@@ -1,3 +1,4 @@
+import { isIncognito } from './incognito'
 import { Innertube, Platform, YT, YTNodes } from 'youtubei.js'
 import { randomUUID } from 'node:crypto'
 import { generatePoToken } from './poToken'
@@ -8,7 +9,7 @@ import { getHistory } from './historyStore'
 import { getAppLanguage, getSessionState, listActiveSubscriptions, recordProfileHistoryEntry } from './localDb'
 import { getAccountClient, getAccountPlaybackClient, hasYoutubeAccount, accountRevision, reportHistorySyncFailure } from './youtubeAccount'
 import { ratingFromInfo } from './videoRatingState'
-import { getPlayableResponse, playbackStatus } from './playbackAvailability'
+import { getGuestPlaybackResponse, getPlayableResponse, playbackStatus } from './playbackAvailability'
 import { protectedFetch } from './adBlock'
 import { isGuestYoutubeHome } from './youtubeSessionContext'
 import { excludeHomeNewsBroadcasters, removeHomeNewsShelves } from './homeNewsFilter'
@@ -1029,6 +1030,8 @@ async function fetchVideoInfoUncached(videoId: string): Promise<VideoInfoResult>
   // poToken.ts), not a full challenge round trip every time.
   const tPoTokenStart = performance.now()
   const { poToken, visitorData } = await generatePoToken({ videoId })
+  let streamPoToken = poToken
+  let publicPlayback: Innertube | null = null
   const tPoToken = performance.now() - tPoTokenStart
   console.log(`[youtube] poToken generated (${poToken.length} chars) in ${tPoToken.toFixed(0)}ms`)
 
@@ -1046,6 +1049,31 @@ async function fetchVideoInfoUncached(videoId: string): Promise<VideoInfoResult>
     return result
   }
 
+  const loadPublicWatchPage = async () => {
+    // A public watch page can remain playable when the standalone anonymous
+    // player API asks for sign-in. Use that page's own response and attestation,
+    // with no account cookies and no attempt to override an upstream denial.
+    const fresh = await generatePoToken({ videoId, useWatchPage: true })
+    const raw = fresh.playerResponse
+    const details = raw?.videoDetails as { videoId?: unknown } | undefined
+    if (!raw || details?.videoId !== videoId) throw new Error('Public watch page did not contain this video')
+    const client = await Innertube.create({ generate_session_locally: true,
+      retrieve_player: true, fetch: protectedFetch, visitor_data: fresh.visitorData })
+    Object.assign(client.session.context.client, fresh.clientContext, { visitorData: fresh.visitorData })
+    client.session.po_token = fresh.poToken
+    if (client.session.player) client.session.player.po_token = fresh.poToken
+    const response = new YT.VideoInfo([{ success: true, status_code: 200,
+      data: raw as ConstructorParameters<typeof YT.VideoInfo>[0][0]['data'] }],
+      client.actions, randomUUID().replaceAll('-', '').slice(0, 16))
+    publicPlayback = client
+    streamPoToken = fresh.poToken
+    return response
+  }
+  const requestAnonymous = () => isIncognito
+    ? getGuestPlaybackResponse(() => loadBasicInfo(anonymousPlayback), loadPublicWatchPage,
+      (error) => console.warn('[youtube] public signed-out watch page unavailable:', error instanceof Error ? error.message : String(error)))
+    : loadBasicInfo(anonymousPlayback)
+
   const tGetInfoStart = performance.now()
   let authenticatedPlayback: Innertube | null = null
   // Anonymous playback may suddenly receive LOGIN_REQUIRED after several
@@ -1054,15 +1082,16 @@ async function fetchVideoInfoUncached(videoId: string): Promise<VideoInfoResult>
   // If YouTube also refuses that account, surface the restriction rather than
   // generating a blank DASH manifest or retrying indefinitely.
   const { info, fromAccount } = await getPlayableResponse(
-    () => loadBasicInfo(anonymousPlayback),
+    requestAnonymous,
     accountClient ? async () => {
       console.warn(`[youtube] anonymous playback requires sign-in [video=${videoId}]; retrying with connected YouTube account`)
       authenticatedPlayback = await getAccountPlaybackClient()
       return loadBasicInfo(authenticatedPlayback)
     } : undefined,
-    (error) => console.warn('[youtube] signed-in playback request failed:', error instanceof Error ? error.message : String(error))
+    (error) => console.warn('[youtube] signed-in playback request failed:', error instanceof Error ? error.message : String(error)),
+    isIncognito
   )
-  const yt = fromAccount && authenticatedPlayback ? authenticatedPlayback : anonymousPlayback
+  const yt = fromAccount && authenticatedPlayback ? authenticatedPlayback : publicPlayback ?? anonymousPlayback
   const tGetInfo = performance.now() - tGetInfoStart
   console.log(`[youtube] getInfo playable, source=${fromAccount ? 'signed-in' : 'anonymous'} in ${tGetInfo.toFixed(0)}ms`)
 
@@ -1120,7 +1149,7 @@ async function fetchVideoInfoUncached(videoId: string): Promise<VideoInfoResult>
           // runtime object has all of them, this cast just tells TS that.
           info as unknown as Parameters<typeof buildSabrPayload>[0],
           (url) => player.decipher(url),
-          poToken,
+          streamPoToken,
           yt.session.context.client
         )
         if (sabr) {

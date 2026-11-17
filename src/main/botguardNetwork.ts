@@ -22,7 +22,9 @@ const allowedHeaders = new Set(['accept', 'accept-language', 'content-type', 'x-
 function permittedTarget(target: URL, method: string): boolean {
   if (target.protocol !== 'https:' || target.username || target.password || target.port) return false
   if (target.hostname === 'www.youtube.com') {
-    return method === 'GET' ? target.pathname === '/' :
+    return method === 'GET' ? target.pathname === '/' ||
+      (target.pathname === '/watch' && /^[A-Za-z0-9_-]{11}$/.test(target.searchParams.get('v') ?? '') &&
+        [...target.searchParams.keys()].length === 1) :
       ['/youtubei/v1/att/get', '/api/jnn/v1/GenerateIT'].includes(target.pathname)
   }
   if (method !== 'GET') return false

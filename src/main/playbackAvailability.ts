@@ -12,9 +12,10 @@ export function playbackStatus(info: PlaybackResponse): string {
   return info.playability_status?.status ?? 'UNKNOWN'
 }
 
-export function assertPlayableVideo(info: PlaybackResponse, hasAccount: boolean): void {
+export function assertPlayableVideo(info: PlaybackResponse, hasAccount: boolean, incognito = false): void {
   const status = playbackStatus(info)
   if (status === 'LOGIN_REQUIRED') {
+    if (incognito) throw new Error('YouTube declined signed-out playback in this incognito session. Retry the video or open it on YouTube to check any verification or availability requirements. Your connected account is not used in incognito.')
     throw new Error(hasAccount
       ? 'YouTube declined playback, including through your connected account. Open YouTube in your browser and complete any account verification, then reconnect your account in LokTube if necessary.'
       : 'YouTube requires a signed-in account for playback. Connect your YouTube account in Account & privacy, or complete any verification requested by YouTube in your browser.')
@@ -31,11 +32,12 @@ export function assertPlayableVideo(info: PlaybackResponse, hasAccount: boolean)
 export async function getPlayableResponse<T extends PlaybackResponse>(
   requestAnonymous: () => Promise<T>,
   requestSignedIn?: () => Promise<T>,
-  onFallbackFailure?: (error: unknown) => void
+  onFallbackFailure?: (error: unknown) => void,
+  incognito = false
 ): Promise<{ info: T; fromAccount: boolean }> {
   const anonymous = await requestAnonymous()
   if (playbackStatus(anonymous) !== 'LOGIN_REQUIRED' || !requestSignedIn) {
-    assertPlayableVideo(anonymous, Boolean(requestSignedIn))
+    assertPlayableVideo(anonymous, Boolean(requestSignedIn), incognito)
     return { info: anonymous, fromAccount: false }
   }
 
@@ -50,4 +52,16 @@ export async function getPlayableResponse<T extends PlaybackResponse>(
 
   assertPlayableVideo(signedIn, true)
   return { info: signedIn, fromAccount: true }
+}
+
+/** One public watch-page fallback for a rejected guest API request. */
+export async function getGuestPlaybackResponse<T extends PlaybackResponse>(
+  requestApi: () => Promise<T>,
+  requestPublicPage: () => Promise<T>,
+  reportFailure: (error: unknown) => void
+): Promise<T> {
+  const initial = await requestApi()
+  if (playbackStatus(initial) !== 'LOGIN_REQUIRED') return initial
+  try { return await requestPublicPage() }
+  catch (error) { reportFailure(error); return initial }
 }

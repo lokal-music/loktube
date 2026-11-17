@@ -171,7 +171,8 @@ export function Home() {
           </TopicScroller>
         )}
       </div>
-      {!youtubeAccount.signedIn && <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded border border-neutral-800 bg-neutral-900/50 p-4">
+      {window.api.isIncognito && <p className="mb-6 text-sm text-neutral-400">{t('Incognito recommendations are not linked to your account. Watch and search history are disabled.')}</p>}
+      {!window.api.isIncognito && !youtubeAccount.signedIn && <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded border border-neutral-800 bg-neutral-900/50 p-4">
         <p className="text-sm text-neutral-300">Connect YouTube for your recommendations, subscriptions and watch history.</p>
         <Link to="/account" className="wt-action-important rounded px-4 py-2 text-sm font-medium">Sign in to YouTube</Link>
       </div>}
@@ -183,8 +184,8 @@ export function Home() {
           className="wt-action cursor-pointer rounded px-4 py-2 text-sm font-medium">{t('Retry')}</button>
       </div>}
       {feedStatus === 'ready' && <div className="space-y-8">
-        <section ref={recommendationsRef} aria-label={t('For you')}>
-          <h2 className="mb-3 text-lg font-semibold">{t('For you')}</h2>
+        <section ref={recommendationsRef} aria-label={t(window.api.isIncognito ? 'Discover' : 'For you')}>
+          <h2 className="mb-3 text-lg font-semibold">{t(window.api.isIncognito ? 'Discover' : 'For you')}</h2>
           {topicError && <p role="alert" className="mb-3 text-sm text-red-400">{topicError}</p>}
           {topicLoading && <p role="status" className="mb-3 text-sm text-neutral-400">{t('Loading recommendations...')}</p>}
           {feed.length === 0 && !topicLoading &&

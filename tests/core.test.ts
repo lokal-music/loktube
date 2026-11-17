@@ -16,7 +16,8 @@ import { youtubeUrlToAppRoute, loktubeProtocolToRoute } from '../src/main/extern
 import { decodeTabSession, encodeTabSession, TAB_SESSION_KEY } from '../src/renderer/src/tabs/tabSession'
 import { dropIndexAt } from '../src/renderer/src/tabs/pointerReorder'
 import { removeHomeNewsShelves, isNewsShelfHeading, isNewsBroadcaster, excludeHomeNewsBroadcasters } from '../src/main/homeNewsFilter'
-import { assertPlayableVideo, getPlayableResponse } from '../src/main/playbackAvailability'
+import { extractInitialPlayerResponse } from '../src/main/botguard/pageData'
+import { assertPlayableVideo, getGuestPlaybackResponse, getPlayableResponse } from '../src/main/playbackAvailability'
 import { parseLoungeFrames, extractLoungeSessionIds, validYoutubeVideoIds } from '../src/main/loungeProtocol'
 import { CAST_SERVICE, dnsQuery, parseCastDnsPacket, collectCastDevices, encodeCastMessage, decodeCastMessage } from '../src/main/googleCastProtocol'
 
@@ -853,4 +854,48 @@ test('incognito only accepts internal browsing routes', () => {
     assert.equal(incognitoRoute(path), path)
   for (const path of [null, 123, '//evil.test', 'https://evil.test', 'javascript:alert(1)', '/account', '/search\\\\evil', '/search\nother', '/search?q=' + 'x'.repeat(4096)])
     assert.equal(incognitoRoute(path), '/')
+})
+
+test('public watch responses are read as data without executing page code', () => {
+  const raw = { playabilityStatus: { status: 'OK' }, videoDetails: { videoId: 'jNQXAC9IVRw' },
+    streamingData: { adaptiveFormats: [] } }
+  for (const script of [
+    'var ytInitialPlayerResponse = ' + JSON.stringify(raw) + ';',
+    'window["ytInitialPlayerResponse"] = ' + JSON.stringify(raw) + ';'
+  ]) assert.deepEqual(extractInitialPlayerResponse(script), raw)
+  assert.equal(extractInitialPlayerResponse('var unrelated = {};'), null)
+  assert.throws(() => extractInitialPlayerResponse('var ytInitialPlayerResponse = (() => { throw Error("executed") })();'),
+    /Unsupported executable expression/)
+})
+
+test('guest playback uses a public watch page once when the API asks for sign-in', async () => {
+  const calls: string[] = []
+  const playable = { playability_status: { status: 'OK' }, streaming_data: {} }
+  const result = await getPlayableResponse(() => getGuestPlaybackResponse(
+    async () => { calls.push('api'); return { playability_status: { status: 'LOGIN_REQUIRED' } } },
+    async () => { calls.push('public-page'); return playable },
+    () => assert.fail('no failure expected')
+  ), undefined, undefined, true)
+  assert.deepEqual(calls, ['api', 'public-page'])
+  assert.equal(result.fromAccount, false)
+  assert.equal(result.info, playable)
+})
+
+test('guest playback keeps real denials and never loops or requests an account', async () => {
+  let requests = 0
+  const denied = { playability_status: { status: 'LOGIN_REQUIRED' } }
+  await assert.rejects(getPlayableResponse(() => getGuestPlaybackResponse(
+    async () => denied, async () => { requests++; return denied }, () => {}
+  ), undefined, undefined, true), /declined signed-out playback/)
+  assert.equal(requests, 1)
+  let failures = 0
+  const response = await getGuestPlaybackResponse(async () => denied,
+    async () => { throw Error('unavailable public page') }, () => { failures++ })
+  assert.equal(response, denied)
+  assert.equal(failures, 1)
+  for (const status of ['OK', 'UNPLAYABLE', 'AGE_CHECK_REQUIRED']) {
+    const initial = { playability_status: { status }, streaming_data: {} }
+    assert.equal(await getGuestPlaybackResponse(async () => initial,
+      async () => assert.fail('must not retry'), () => {}), initial)
+  }
 })

@@ -20,13 +20,22 @@ const { tmpdir } = require('node:os')
   let privateDirectory
   try {
     const page = await app.firstWindow()
-    await page.getByRole('heading', { name: 'You’re browsing incognito' }).waitFor({ timeout: 20000 })
-    assert.equal(await page.evaluate(() => window.api.isIncognito), true)
-    assert.equal(await page.getByRole('button', { name: 'Close incognito', exact: true }).count(), 2)
-    assert.equal((await page.evaluate(() => window.api.getYoutubeAccount())).signedIn, false)
-    assert.deepEqual(await page.evaluate(() => window.api.getHomeFeed()), {
-      ok: true, data: [], home: { shorts: [], hasMore: false }
+    await page.getByRole('heading', { name: 'Home', exact: true }).waitFor({ timeout: 20000 })
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('youtube:get-home-feed')
+      ipcMain.handle('youtube:get-home-feed', () => ({ ok: true, data: [{
+        videoId: 'jNQXAC9IVRw', title: 'Public discovery video', channelId: null,
+        channelName: 'Guest creator', thumbnailUrl: null, durationText: '0:19',
+        viewCountText: null, publishedText: null
+      }], home: { shorts: [], hasMore: false } }))
     })
+    await page.reload()
+    await page.getByRole('heading', { name: 'Discover', exact: true }).waitFor()
+    await page.getByRole('link', { name: 'Public discovery video', exact: true }).first().waitFor()
+    assert.equal(await page.getByRole('link', { name: 'Sign in to YouTube', exact: true }).count(), 0)
+    assert.equal(await page.evaluate(() => window.api.isIncognito), true)
+    assert.equal(await page.getByRole('button', { name: 'Close incognito', exact: true }).count(), 1)
+    assert.equal((await page.evaluate(() => window.api.getYoutubeAccount())).signedIn, false)
     assert.deepEqual(await page.evaluate(() => window.api.recordSearchQuery('private search')), [])
     assert.deepEqual(await page.evaluate(() => window.api.listSearchHistory()), [])
     assert.deepEqual(await page.evaluate(() => window.api.getHistory()), [])
@@ -49,7 +58,7 @@ const { tmpdir } = require('node:os')
     assert.equal(files.includes('logs'), false)
     assert.equal(await readFile(join(normal, 'worldtube-data.json'), 'utf8'), marker)
     assert.equal(await readFile(join(normal, 'youtube-session.enc'), 'utf8'), 'normal-account-only')
-    console.log('PASS: incognito has no home recommendations, account, history, persistent session or database')
+    console.log('PASS: incognito shows guest discovery without sign-in prompts, account, history, persistent session or database')
   } finally {
     await app.close()
     if (privateDirectory) await rm(privateDirectory, { recursive: true, force: true })

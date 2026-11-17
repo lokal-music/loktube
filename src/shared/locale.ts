@@ -149,6 +149,9 @@ export const english: Record<string, string> = {
 }
 
 const spanish: Record<string, string> = {
+  "Discover": "Descubrir",
+  "Incognito recommendations are not linked to your account. Watch and search history are disabled.": "Las recomendaciones de incógnito no están vinculadas a tu cuenta. El historial de reproducción y búsqueda está desactivado.",
+  "You’re signed out. Watch and search history are disabled in this window.": "No has iniciado sesión. El historial de reproducción y búsqueda está desactivado en esta ventana.",
   "Incognito": "Incógnito",
   "New incognito window": "Nueva ventana de incógnito",
   "Close incognito": "Cerrar incógnito",
