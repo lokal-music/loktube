@@ -27,5 +27,7 @@ installers. The release workflow supplies the corresponding source archive.
 
 Publication runs only on an explicit version tag or manual release invocation.
 All requested platform jobs must finish successfully before the draft becomes
-public. macOS remains opt-in with signing credentials; unavailable downloads
-are disabled, not advertised as working installers.
+public. macOS v2.0.2 ships Apple Silicon and Intel DMG/ZIP installers validated on
+native runners; these installers are ad-hoc signed and not notarized. Future
+release workflows build both architectures by default, with Developer ID
+signing enabled only when the required credentials are configured.
