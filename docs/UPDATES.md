@@ -74,12 +74,21 @@ assets; private repositories require a different distribution decision.
 
 ## macOS
 
-The macOS ARM64 job is opt-in with `ENABLE_MAC_RELEASE=true`. It requires
-`MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`,
-`APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` secrets. It produces DMG and
-ZIP files. Signing is required for macOS auto-updates; no credentials are
-included in the repository. Intel macOS and additional architectures are not
-configured yet. Windows signing is also pending before broad distribution.
+LokTube v2.0.2 provides **Apple Silicon (arm64)** and **Intel (x64)** DMG
+and ZIP installers. Both architectures were built, signature-checked and
+smoke-tested on native macOS 15 GitHub runners. The v2.0.2 builds are **ad-hoc
+signed**, not notarized or Developer ID signed. On first launch, macOS may
+require explicit approval under System Settings → Privacy & Security.
+
+Future releases build and validate both macOS architectures automatically.
+When all five secrets — `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` — are configured, the
+release workflow requests Developer ID signing and notarization. When none
+are configured, it uses ad-hoc signing instead. Partially configured
+credentials stop the Mac release rather than silently falling back.
+Automatic macOS updates should not be advertised until Developer ID signing,
+notarization and the installed updater have been independently validated.
+Windows signing is likewise not yet available.
 
 ## Local Commands
 
