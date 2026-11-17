@@ -1,0 +1,163 @@
+name: Backfill LokTube v2.0.2 macOS installers
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/backfill-v2.0.2-macos.yml
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-backfill-v2.0.2-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mac:
+    # PRs validate the actual v2.0.2 release code before this job can publish
+    # new assets to the already-public release. The merge commit must opt in.
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[mac-backfill v2.0.2]') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            machine: arm64
+          - runner: macos-15-intel
+            arch: x64
+            machine: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      # Important: the macOS binaries are built from the *published tag*, not
+      # the workflow's later commit, to preserve the matching source archive.
+      - uses: actions/checkout@v4
+        with:
+          ref: v2.0.2
+          persist-credentials: false
+      - name: Verify release source and native architecture
+        shell: bash
+        run: |
+          test "$(node -p "require('./package.json').version")" = 2.0.2
+          test "$(uname -m)" = "${{ matrix.machine }}"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --global corepack --force
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node node_modules/electron/install.js
+      - name: Typecheck and unit tests
+        run: |
+          pnpm typecheck
+          pnpm test
+      - name: Package ad-hoc signed DMG and ZIP
+        # No Apple Developer ID secrets are required for this initial macOS
+        # availability build. These are NOT notarized, and macOS Gatekeeper
+        # may require explicit user approval. Auto-updates need Developer ID.
+        run: pnpm package --${{ matrix.arch }} -c.mac.identity=- -c.mac.hardenedRuntime=false
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify native app signature and launch the packaged application
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "release/LokTube-2.0.2-mac-${{ matrix.arch }}.dmg"
+          test -s "release/LokTube-2.0.2-mac-${{ matrix.arch }}.zip"
+          APP="$(find release -type d -name LokTube.app -print -quit)"
+          test -n "$APP"
+          test -x "$APP/Contents/MacOS/LokTube"
+          file "$APP/Contents/MacOS/LokTube" | grep -q "${{ matrix.machine }}"
+          codesign --verify --deep --strict "$APP"
+          APP_EXE="$PWD/$APP/Contents/MacOS/LokTube" node <<'NODE'
+          const assert = require('node:assert/strict')
+          const { _electron: electron } = require('playwright')
+          ;(async () => {
+            const app = await electron.launch({
+              executablePath: process.env.APP_EXE,
+              timeout: 60000
+            })
+            try {
+              const info = await app.evaluate(({ app }) => ({
+                platform: process.platform, arch: process.arch,
+                version: app.getVersion(), packaged: app.isPackaged
+              }))
+              assert.equal(info.platform, 'darwin')
+              assert.equal(info.arch, process.env.EXPECTED_ARCH)
+              assert.equal(info.version, '2.0.2')
+              assert.equal(info.packaged, true)
+              const page = await app.firstWindow()
+              await page.locator('.wt-app-shell').waitFor({ timeout: 45000 })
+              await page.getByRole('link', { name: 'YouTube account', exact: true }).waitFor({ timeout: 45000 })
+              console.log('PASS: packaged LokTube v2.0.2 boots and renders on macOS', info)
+            } finally {
+              await app.close()
+            }
+          })().catch(error => { console.error(error); process.exitCode = 1 })
+          NODE
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch == 'x64' && 'x64' || 'arm64' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loktube-v2.0.2-macos-${{ matrix.arch }}
+          path: |
+            release/LokTube-2.0.2-mac-${{ matrix.arch }}.dmg
+            release/LokTube-2.0.2-mac-${{ matrix.arch }}.zip
+          compression-level: 0
+          if-no-files-found: error
+
+  publish:
+    needs: mac
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[mac-backfill v2.0.2]')) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: loktube-v2.0.2-macos-*
+          path: mac-installers
+      - name: Add both architectures to existing stable 2.0.2 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO="$GITHUB_REPOSITORY"
+          TAG=v2.0.2
+          test "$(gh release view "$TAG" -R "$REPO" --json isDraft --jq .isDraft)" = false
+          for ARCH in arm64 x64; do
+            test -s "mac-installers/loktube-v2.0.2-macos-$ARCH/LokTube-2.0.2-mac-$ARCH.dmg"
+            test -s "mac-installers/loktube-v2.0.2-macos-$ARCH/LokTube-2.0.2-mac-$ARCH.zip"
+          done
+          gh release upload "$TAG" -R "$REPO" mac-installers/*/*.dmg mac-installers/*/*.zip --clobber
+          gh release view "$TAG" -R "$REPO" --json assets --jq '.assets[].name' |
+            grep -Fx 'LokTube-2.0.2-mac-arm64.dmg'
+          gh release view "$TAG" -R "$REPO" --json assets --jq '.assets[].name' |
+            grep -Fx 'LokTube-2.0.2-mac-x64.dmg'
+      - name: Disclose Gatekeeper and update limitations in release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO="$GITHUB_REPOSITORY"
+          NOTES="$(gh release view v2.0.2 -R "$REPO" --json body --jq .body)"
+          if ! grep -Fq 'macOS ad-hoc build' <<<"$NOTES"; then
+            printf '%s\n\n' "$NOTES" > notes.txt
+            cat >> notes.txt <<'NOTES'
+          ## macOS ad-hoc build
+
+          DMG and ZIP downloads are available for Apple Silicon (arm64) and Intel (x64).
+          These v2.0.2 builds are ad-hoc signed, **not Developer ID signed or notarized**. On first launch,
+          macOS may block the app. Open it through Finder using Control-click → Open;
+          if prompted, use System Settings → Privacy & Security → Open Anyway.
+          Only do this if you trust the GitHub release and its source. macOS automatic updates
+          are not supported until a later Developer ID-signed release is available.
+          NOTES
+            gh release edit v2.0.2 -R "$REPO" --notes-file notes.txt
+          fi
