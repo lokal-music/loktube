@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict')
+const {readFile} = require('node:fs/promises')
+const {join} = require('node:path')
 
 module.exports = async ({app,page}) => {
   // Isolate Home's layout from live search availability. Real Shorts renderer
@@ -114,6 +116,45 @@ module.exports = async ({app,page}) => {
     .some(element => element.getClientRects().length && element.scrollLeft<2))
   assert.equal(await previous.count(),0)
   console.log('PASS: Home Shorts arrows overlay row edges, navigate both directions and hide at the start')
+
+  // Regression: switching from a playing in-app mini player to a Short must
+  // retain its real video element and move it into the newly opened dialog.
+  // With an unmounted Shorts slot the mini player disappears first, leaving
+  // that element in a detached DOM node and displaying a black Short.
+  const media=await readFile(join(__dirname,'fixtures/playback.webm'))
+  const mediaUrl=await page.evaluate(bytes=>URL.createObjectURL(
+    new Blob([new Uint8Array(bytes)],{type:'video/webm'})),[...media])
+  await app.evaluate(({ipcMain},url)=>{
+    ipcMain.removeHandler('youtube:get-video-info')
+    ipcMain.handle('youtube:get-video-info',(_event,{videoId})=>({ok:true,data:{
+      playbackToken:'',videoId,title:'Short handoff fixture',channelId:null,channelName:'Fixture creator',
+      channelThumbnailUrl:null,subscriberCountText:null,captions:[],storyboardVtt:null,
+      relatedVideos:[],thumbnailUrl:null,lengthSeconds:20,durationText:'0:20',viewCountText:null,
+      likeCountText:null,publishedText:null,category:null,description:null,
+      dashManifest:null,sabr:null,liveManifests:[{url,mimeType:'video/webm'}]
+    }}))
+  },mediaUrl)
+  await firstRow.first().click({button:'right'})
+  await page.getByRole('menuitem',{name:'Play in mini player',exact:true}).click()
+  await page.waitForFunction(()=>{
+    const video=document.querySelector('[id^="global-player-mini-slot-"] video')
+    if(!(video instanceof HTMLVideoElement) || video.paused || video.currentTime<=0.05) return false
+    video.dataset.shortsHandoff='original-player'
+    return true
+  })
+  await firstShort.click()
+  const shortsDialog=page.getByRole('dialog',{name:'Shorts'})
+  await shortsDialog.waitFor()
+  await page.waitForFunction(()=>{
+    const dialog=document.querySelector('dialog[open][aria-labelledby="shorts-title"]')
+    const video=dialog?.querySelector('[id^="global-player-shorts-slot-"] video')
+    return video instanceof HTMLVideoElement && video.isConnected &&
+      video.dataset.shortsHandoff==='original-player' && !video.paused &&
+      video.videoWidth>0 && video.currentTime>0.05
+  })
+  await shortsDialog.getByRole('button',{name:'Close Short'}).click()
+  await shortsDialog.waitFor({state:'hidden'})
+  console.log('PASS: playing mini player hands off the same connected video into Shorts without black screen')
   // Topic filters are optional and default to hidden; account-curated choices
   // are shown only when a signed-in YouTube profile provides native chips.
   assert.equal(await page.locator('[data-home-topics]:visible').count(),0)
