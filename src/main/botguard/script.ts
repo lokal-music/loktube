@@ -33,6 +33,8 @@ const REQUEST_KEY = 'O43z0dpjhgX20SCx4KAo'
 
 interface InitResult {
   visitorData: string
+  clientContext: Record<string, unknown>
+  playerResponse?: Record<string, unknown>
 }
 
 declare global {
@@ -61,8 +63,10 @@ async function fetchStep(label: string, input: string, init?: RequestInit): Prom
   }
 }
 
-async function initBotGuard(): Promise<InitResult> {
-  const homeResponse = await fetchStep('home page', 'https://www.youtube.com/', {
+async function initBotGuard(videoId?: string): Promise<InitResult> {
+  if (videoId !== undefined && !/^[A-Za-z0-9_-]{11}$/.test(videoId)) throw new Error('Invalid watch video ID')
+  const pageUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : 'https://www.youtube.com/'
+  const homeResponse = await fetchStep(videoId ? 'watch page' : 'home page', pageUrl, {
     headers: { 'Accept-Language': 'en-US' }
   })
   const page = extractYouTubePageData(await homeResponse.text())
@@ -168,7 +172,7 @@ async function initBotGuard(): Promise<InitResult> {
 
   globalThis.__botguardMinter__ = await WebPoMinter.create({ integrityToken }, webPoSignalOutput)
 
-  return { visitorData }
+  return { visitorData, clientContext: context.client ?? {}, playerResponse: page.playerResponse }
 }
 
 /**

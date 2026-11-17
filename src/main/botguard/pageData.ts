@@ -44,14 +44,41 @@ function memberPath(expression: Expression): string | null {
   return parent && typeof property === 'string' ? `${parent}.${property}` : null
 }
 
-export function extractYouTubePageData(html: string): { config: Record<string, Data>; attestation: Record<string, Data> } {
+/** Read the public watch page response as inert data, never executable script. */
+export function extractInitialPlayerResponse(source: string): Record<string, Data> | null {
+  if (!source.includes('ytInitialPlayerResponse')) return null
+  let program: ReturnType<typeof parse>
+  try { program = parse(source, { ecmaVersion: 'latest' }) } catch { return null }
+  let response: Record<string, Data> | null = null
+  const read = (node: Node) => {
+    const value = literalData(node)
+    if (value && typeof value === 'object' && !Array.isArray(value)) response = value
+  }
+  simple(program, {
+    VariableDeclarator(node) {
+      if (node.id.type === 'Identifier' && node.id.name === 'ytInitialPlayerResponse' && node.init) read(node.init)
+    },
+    AssignmentExpression(node) {
+      if (node.left.type === 'MemberExpression' || node.left.type === 'Identifier') {
+        const path = memberPath(node.left)
+        if (path === 'ytInitialPlayerResponse' || path === 'window.ytInitialPlayerResponse') read(node.right)
+      }
+    }
+  })
+  return response
+}
+
+export function extractYouTubePageData(html: string): { config: Record<string, Data>; attestation: Record<string, Data>; playerResponse?: Record<string, Data> } {
   // DOMParser keeps page scripts inert. Acorn reads call arguments as data;
   // neither the downloaded page nor its configuration is evaluated as code.
   const document = new DOMParser().parseFromString(html, 'text/html')
   const config: Record<string, Data> = Object.create(null)
   let attestation: Record<string, Data> | null = null
+  let playerResponse: Record<string, Data> | undefined
   for (const script of Array.from(document.querySelectorAll('script:not([src])'))) {
     const source = script.textContent ?? ''
+    const player = extractInitialPlayerResponse(source)
+    if (player) playerResponse = player
     if (!source.includes('ytcfg') && !source.includes('ytAtN')) continue
     let program: ReturnType<typeof parse>
     try {
@@ -77,5 +104,5 @@ export function extractYouTubePageData(html: string): { config: Record<string, D
   }
   if (!Object.keys(config).length) throw new Error('YouTube page has no supported configuration data')
   if (!attestation) throw new Error('YouTube page has no supported attestation data')
-  return { config, attestation }
+  return { config, attestation, playerResponse }
 }

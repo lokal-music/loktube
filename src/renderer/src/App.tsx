@@ -307,7 +307,7 @@ function IncognitoHome() {
   return <section className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center px-6 text-center">
     <div className="mb-6 rounded-full bg-violet-400/10 p-6 text-violet-200"><Glasses className="h-12 w-12" aria-hidden="true" /></div>
     <h1 className="text-3xl font-semibold text-neutral-100">{t('You’re browsing incognito')}</h1>
-    <p className="mt-4 text-neutral-400">{t('Search or open a video link to get started. No recommendations, watch history or search history.')}</p>
+    <p className="mt-4 text-neutral-400">{t('You’re signed out. Watch and search history are disabled in this window.')}</p>
     <p className="mt-3 text-sm text-neutral-500">{t('This window is signed out. Its temporary session is cleared when you close it. Your network provider and YouTube can still see your activity.')}</p>
     <button type="button" onClick={() => void window.api.closeWindow()} className="mt-8 rounded border border-neutral-700 px-4 py-2 text-sm hover:bg-neutral-800">{t('Close incognito')}</button>
   </section>
@@ -1020,7 +1020,7 @@ function AppRoutes() {
   return (
     <ErrorBoundary key={`${location.pathname}:${revision}`}>
       <Routes>
-        <Route path="/" element={window.api.isIncognito ? <IncognitoHome /> : <Home />} />
+        <Route path="/" element={<Home />} />
         <Route path="/search" element={<Search />} />
         <Route path="/history" element={<History />} />
         <Route path="/subscriptions" element={<Subscriptions />} />
