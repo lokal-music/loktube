@@ -57,7 +57,7 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: false
-  include: resources/installer.nsh
+  include: resources/setup/installer.nsh
   installerLanguages:
     - en_US
     - es_ES

@@ -26,7 +26,7 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       published: ${{ steps.draft.outputs.published }}
-      ready_assets: ${{ steps.assets.outputs.ready }}
+      ready_assets: 'false'
     steps:
       - uses: actions/checkout@v4
       - name: Require license and recorded technical review
@@ -61,6 +61,7 @@ jobs:
               echo "This version is already published; keeping its existing assets."
               exit 0
             fi
+            gh release edit "$TAG" --target "$GITHUB_SHA"
           else
             NOTES=".github/release-notes/$TAG.md"
             if [ -f "$NOTES" ]; then
@@ -69,20 +70,6 @@ jobs:
               gh release create "$TAG" --draft --title "LokTube ${TAG#v}" --generate-notes --target "$GITHUB_SHA"
             fi
           fi
-      - name: Reuse completed installer uploads when resuming a draft
-        id: assets
-        if: steps.draft.outputs.published != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name')
-          for NAME in "LokTube-$VERSION-win-x64.exe" "LokTube-$VERSION-linux-x86_64.AppImage" "LokTube-$VERSION-linux-amd64.deb"; do
-            if ! printf '%s\n' "$ASSETS" | grep -Fxq "$NAME"; then exit 0; fi
-          done
-          echo "ready=true" >> "$GITHUB_OUTPUT"
-          echo "Existing Windows and Linux installers verified; resuming draft without rebuilding them."
 
   package:
     needs: prepare
@@ -181,6 +168,8 @@ jobs:
             pnpm package --"$ARCH"
           elif [ "$SIGNING_CREDENTIALS" = 0 ]; then
             echo "No Apple signing credentials: packaging an ad-hoc signed Mac build."
+            # Empty CSC_LINK is treated as a certificate path by Builder.
+            unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
             pnpm package --"$ARCH" -c.mac.identity=- -c.mac.hardenedRuntime=false
           else
             echo "Incomplete Apple signing credentials: require all five or none." >&2

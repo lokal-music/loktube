@@ -1,0 +1,36 @@
+name: Complete custom setup
+on:
+  pull_request:
+    paths:
+      - 'resources/setup/**'
+      - 'scripts/build-setup-ui.cjs'
+      - 'scripts/installer-smoke-build.cjs'
+      - 'scripts/setup-ui-smoke.ps1'
+      - 'electron-builder.yml'
+      - '.github/workflows/installer-ui.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --global corepack --force
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/installer-smoke-build.cjs
+      - name: Render all screens and exercise custom UI install, update and uninstall
+        shell: pwsh
+        run: ./scripts/setup-ui-smoke.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: custom-setup-screens
+          path: build/installer/generated/screens/
