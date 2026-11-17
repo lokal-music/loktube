@@ -1,13 +1,13 @@
 import { isIncognito } from './incognito'
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS, type UpdateState } from '../shared/ipc'
-import { translateFor } from '../shared/locale'
 import { getAppPreferences } from './localDb'
 
 let state: UpdateState = { status: app.isPackaged ? 'idle' : 'development', currentVersion: app.getVersion() }
 let checking: Promise<UpdateState> | null = null
 let downloading: Promise<UpdateState> | null = null
+let installing = false
 
 function publish(change: Partial<UpdateState>) {
   state = { ...state, ...change }
@@ -38,7 +38,10 @@ export function registerUpdates(): void {
   autoUpdater.on('update-not-available', () => publish({ status: 'current', version: undefined }))
   autoUpdater.on('download-progress', (progress) => publish({ status: 'downloading', percent: progress.percent }))
   autoUpdater.on('update-downloaded', (info) => publish({ status: 'downloaded', version: info.version, percent: 100 }))
-  autoUpdater.on('error', (failure) => publish({ status: 'error', error: failure.message }))
+  autoUpdater.on('error', (failure) => {
+    installing = false
+    publish({ status: 'error', error: failure.message })
+  })
   ipcMain.handle(IPC_CHANNELS.UPDATES_STATE, () => state)
   ipcMain.handle(IPC_CHANNELS.UPDATES_CHECK, () => check())
   ipcMain.handle(IPC_CHANNELS.UPDATES_DOWNLOAD, () => {
@@ -50,17 +53,17 @@ export function registerUpdates(): void {
     }).finally(() => { downloading = null })
     return downloading
   })
-  ipcMain.handle(IPC_CHANNELS.UPDATES_INSTALL, async (event) => {
-    if (!app.isPackaged || state.status !== 'downloaded') return
-    const { language } = await getAppPreferences()
-    const tr = (source: string) => translateFor(language, source)
-    const owner = BrowserWindow.fromWebContents(event.sender)
-    if (!owner) return
-    const confirmation = await dialog.showMessageBox(owner, {
-      type: 'question', message: tr('Restart LokTube now to install the update?'),
-      buttons: [tr('Install update'), tr('Cancel')], defaultId: 1, cancelId: 1
-    })
-    if (confirmation.response === 0) autoUpdater.quitAndInstall(false, true)
+  ipcMain.handle(IPC_CHANNELS.UPDATES_INSTALL, () => {
+    if (isIncognito || !app.isPackaged || state.status !== 'downloaded' || installing) return
+    installing = true
+    try {
+      // The explicitly labelled restart button is the confirmation. On Windows,
+      // silent NSIS mode skips setup pages; forceRunAfter reopens LokTube.
+      autoUpdater.quitAndInstall(true, true)
+    } catch (failure) {
+      installing = false
+      publish({ status: 'error', error: failure instanceof Error ? failure.message : String(failure) })
+    }
   })
 }
 

@@ -26,7 +26,14 @@ Remaining closure tasks and owner decisions: [RELEASE_CHECKLIST.md](RELEASE_CHEC
 - `electron-updater` reads published GitHub Releases from packaged applications.
 - Startup checks can be disabled in Account > Application.
 - Downloads require an explicit click; automatic installation on quit is disabled.
-- Installation requires confirmation and restarts the application.
+- Clicking **Restart and install** directly installs the downloaded update and
+  reopens the application. There is no second confirmation dialog. Windows uses
+  silent NSIS mode, retaining the existing location and installation scope.
+- Fresh Windows setup uses the custom dark navy / ice-blue LokTube screen in
+  `resources/installer.nsh`: a single Install action, an optional folder picker,
+  and a completion screen. Existing installations keep their registered folder
+  and show Update instead. New installs default to the current user; `/allusers`
+  and existing machine-wide installations still use Builder's elevation flow.
 - Development instances never download or install updates.
 - Errors in checking/downloading are reported without stopping video playback.
 - Local users, profiles and library data are not sent to GitHub.
