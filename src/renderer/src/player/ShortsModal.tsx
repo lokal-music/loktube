@@ -46,8 +46,9 @@ export function ShortsModal() {
     }
   }, [isOpen])
 
-  if (!isOpen) return null
-
+  // Keep the dialog's player slot in the DOM while the dialog is closed.
+  // Otherwise opening Shorts unmounts MiniPlayer before the Shorts slot exists,
+  // leaving the persistent Shaka video attached to a detached mini-player node.
   function move(direction: number) {
     const next = shorts[index + direction]
     if (!next || !short || slide) return
