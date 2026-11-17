@@ -61,6 +61,9 @@ jobs:
         # may require explicit user approval. Auto-updates need Developer ID.
         run: pnpm package --${{ matrix.arch }} -c.mac.identity=- -c.mac.hardenedRuntime=false
         env:
+          # Safe here: every PR builds the fixed public v2.0.2 tag, uses only
+          # an ad-hoc identity and has no signing secrets or write token.
+          CSC_FOR_PULL_REQUEST: 'true'
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Verify native app signature and launch the packaged application
         shell: bash
