@@ -78,7 +78,7 @@ Var LTExisting
     StrCpy $LTExisting "1"
   ${EndIf}
   InitPluginsDir
-  File /oname=loktube.ico "${BUILD_RESOURCES_DIR}\icon.ico"
+  File "/oname=$PLUGINSDIR\loktube.ico" "${BUILD_RESOURCES_DIR}\icon.ico"
 !macroend
 
 Function LokTubeGUIInit
