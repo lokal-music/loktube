@@ -30,7 +30,7 @@ function setup({ packaged = true, incognito = false, fail = false } = {}) {
     '../shared/ipc': { IPC_CHANNELS: channels },
     './localDb': { getAppPreferences: async () => ({ checkForUpdatesOnStartup: false }) }
   }
-  runInNewContext(code, { module, exports: module.exports, console,
+  runInNewContext(code, { module, exports: module.exports, console, Error,
     require: (name) => {
       assert.ok(name in imports, 'Unexpected dependency: ' + name)
       return imports[name]
