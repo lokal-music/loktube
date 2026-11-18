@@ -1,30 +1,45 @@
 /** Minimal, bounded parser for YouTube TV's length-prefixed Lounge responses. */
 export type LoungeEvent = [string, ...unknown[]]
 
-export function parseLoungeFrames(body: string): LoungeEvent[] {
-  if (body.length > 1_000_000) throw new Error('TV response was too large')
-  const messages: LoungeEvent[] = []
+export function readLoungeFrames(body: string, partial = false): {
+  events: Array<{ id: number; event: LoungeEvent }>
+  remainder: string
+} {
+  const events: Array<{ id: number; event: LoungeEvent }> = []
   let cursor = 0
   while (cursor < body.length) {
+    if (body[cursor] === '\n') { cursor++; continue }
     const newline = body.indexOf('\n', cursor)
-    if (newline < 0) throw new Error('TV response has no frame delimiter')
+    if (newline < 0) {
+      if (partial && body.length - cursor <= 8) break
+      throw new Error('TV response has no frame delimiter')
+    }
     const count = body.slice(cursor, newline).trim()
     if (!/^\d{1,7}$/.test(count)) throw new Error('TV response has an invalid frame length')
     const length = Number(count)
-    cursor = newline + 1
-    if (length < 1 || cursor + length > body.length) throw new Error('TV response contains a truncated frame')
+    if (length < 1 || length > 1_000_000) throw new Error('TV response has an invalid frame length')
+    const start = newline + 1
+    if (start + length > body.length) {
+      if (partial) break
+      throw new Error('TV response contains a truncated frame')
+    }
     let frame: unknown
-    try { frame = JSON.parse(body.slice(cursor, cursor + length)) }
+    try { frame = JSON.parse(body.slice(start, start + length)) }
     catch { throw new Error('TV response contains invalid JSON') }
     if (!Array.isArray(frame)) throw new Error('TV response contains an invalid frame')
     for (const entry of frame) {
-      if (!Array.isArray(entry) || !Array.isArray(entry[1]) || typeof entry[1][0] !== 'string') continue
-      messages.push(entry[1] as LoungeEvent)
+      if (!Array.isArray(entry) || !Number.isSafeInteger(entry[0]) ||
+          !Array.isArray(entry[1]) || typeof entry[1][0] !== 'string') continue
+      events.push({ id: entry[0], event: entry[1] as LoungeEvent })
     }
-    cursor += length
-    if (body[cursor] === '\n') cursor++
+    cursor = start + length
   }
-  return messages
+  return { events, remainder: body.slice(cursor) }
+}
+
+export function parseLoungeFrames(body: string): LoungeEvent[] {
+  if (body.length > 1_000_000) throw new Error('TV response was too large')
+  return readLoungeFrames(body).events.map(({ event }) => event)
 }
 
 export function extractLoungeSessionIds(body: string): { sid: string; gsessionid: string } {

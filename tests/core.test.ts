@@ -18,6 +18,7 @@ import { dropIndexAt } from '../src/renderer/src/tabs/pointerReorder'
 import { removeHomeNewsShelves, isNewsShelfHeading, isNewsBroadcaster, excludeHomeNewsBroadcasters } from '../src/main/homeNewsFilter'
 import { extractInitialPlayerResponse } from '../src/main/botguard/pageData'
 import { assertPlayableVideo, getGuestPlaybackResponse, getPlayableResponse } from '../src/main/playbackAvailability'
+import { LoungeSession } from '../src/main/youtubeLounge'
 import { parseLoungeFrames, extractLoungeSessionIds, validYoutubeVideoIds } from '../src/main/loungeProtocol'
 import { CAST_SERVICE, dnsQuery, parseCastDnsPacket, collectCastDevices, encodeCastMessage, decodeCastMessage } from '../src/main/googleCastProtocol'
 
@@ -788,6 +789,67 @@ test('YouTube TV Lounge sessions parse framed messages and reject malformed repl
   assert.throws(() => extractLoungeSessionIds('2\n[]'), /active YouTube session/)
   assert.throws(() => parseLoungeFrames('99\n[]'), /truncated/)
   assert.throws(() => parseLoungeFrames('5\nhello'), /invalid JSON/)
+})
+
+test('Cast playback controls keep the same session and follow receiver events', async (t) => {
+  const frame = (events: unknown[]) => {
+    const json = JSON.stringify(events)
+    return json.length + '\n' + json
+  }
+  const commands: Array<{ rid: string | null; aid: string | null; sid: string | null; body: URLSearchParams }> = []
+  let stream: ReadableStreamDefaultController<Uint8Array> | undefined
+  const eventStream = new ReadableStream<Uint8Array>({ start: (controller) => { stream = controller } })
+  let binds = 0
+  let subscriptions = 0
+  t.mock.method(globalThis, 'fetch', async (input: URL, init: RequestInit) => {
+    const params = input.searchParams
+    if (!params.has('SID')) {
+      binds++
+      return new Response(frame([[0, ['c', 'screen-session']], [1, ['S', 'global-session']]]))
+    }
+    if (init.method === 'GET') {
+      subscriptions++
+      assert.equal(params.get('RID'), 'rpc')
+      assert.equal(params.get('AID'), '1')
+      init.signal?.addEventListener('abort', () => stream?.close(), { once: true })
+      return new Response(eventStream)
+    }
+    commands.push({ rid: params.get('RID'), aid: params.get('AID'), sid: params.get('SID'), body: new URLSearchParams(String(init.body)) })
+    return new Response('[]')
+  })
+
+  const session = await LoungeSession.open('receiver-token')
+  t.after(() => session.close())
+  await session.setPlaylist({ videoId: 'jNQXAC9IVRw', videoIds: ['jNQXAC9IVRw', 'M7lc1UVf-VE'], position: 12 })
+  assert.equal(session.playback.state, 'buffering')
+  assert.equal(session.playback.hasNext, true)
+
+  const encoder = new TextEncoder()
+  const remoteUpdate = frame([
+    [2, ['nowPlaying', { videoId: 'M7lc1UVf-VE', state: '2', currentTime: '41', duration: '120' }]],
+    [3, ['onHasPreviousNextChanged', { hasPrevious: 'true', hasNext: 'false' }]]
+  ])
+  for (const part of [remoteUpdate.slice(0, 2), remoteUpdate.slice(2, 18), remoteUpdate.slice(18)])
+    stream?.enqueue(encoder.encode(part))
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.deepEqual(session.playback, {
+    videoId: 'M7lc1UVf-VE', state: 'paused', position: 41, duration: 120, hasPrevious: true, hasNext: false
+  })
+
+  await Promise.all([session.command('play'), session.command('seekTo', { newTime: '50' }), session.command('pause')])
+  assert.equal(binds, 1)
+  assert.equal(subscriptions, 1)
+  assert.deepEqual(commands.map(({ rid, aid, sid, body }) => [rid, aid, sid, body.get('ofs'), body.get('req0__sc')]), [
+    ['2', '1', 'screen-session', '1', 'setPlaylist'],
+    ['3', '3', 'screen-session', '2', 'play'],
+    ['4', '3', 'screen-session', '3', 'seekTo'],
+    ['5', '3', 'screen-session', '4', 'pause']
+  ])
+  assert.equal(commands[2].body.get('req0_newTime'), '50')
+  stream?.enqueue(encoder.encode(frame([[4, ['loungeScreenDisconnected']]])))
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(session.connected, false)
+  await assert.rejects(session.command('play'), /disconnected/)
 })
 
 test('YouTube TV playback IDs are validated and deduplicated', () => {

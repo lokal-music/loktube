@@ -11,6 +11,7 @@ export type PlayerCommandDetail = { tabId?: string } & (
   | { action: 'toggle-play' }
   | { action: 'play' }
   | { action: 'pause' }
+  | { action: 'pause-local' }
   | { action: 'toggle-picture-in-picture' }
   | { action: 'seek-relative'; seconds: number }
   | { action: 'seek-to'; seconds: number }

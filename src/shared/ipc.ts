@@ -51,11 +51,11 @@ export const IPC_CHANNELS = {
   CAST_SCREEN_PAIR: 'cast:screen:pair',
   CAST_SCREEN_FORGET: 'cast:screen:forget',
   CAST_SCREEN_PLAY: 'cast:screen:play',
-  CAST_SCREEN_STOP: 'cast:screen:stop',
+  CAST_ACTIVE_PLAY: 'cast:active:play',
   GOOGLE_CAST_DISCOVER: 'cast:google:discover',
-  GOOGLE_CAST_STATE: 'cast:google:state',
+  CAST_STATE: 'cast:state',
   GOOGLE_CAST_PLAY: 'cast:google:play',
-  GOOGLE_CAST_CONTROL: 'cast:google:control',
+  CAST_CONTROL: 'cast:control',
   SESSION_GET_STATE: 'session:get-state',
   SESSION_CREATE_USER: 'session:create-user',
   SESSION_LOGIN: 'session:login',
@@ -378,10 +378,16 @@ export interface GoogleCastDevice {
   model: string
 }
 
-export interface GoogleCastState {
+export interface CastPlaybackState {
   deviceId: string
   deviceName: string
-  state: 'playing' | 'paused'
+  kind: 'google' | 'tv'
+  state: 'playing' | 'paused' | 'buffering' | 'idle'
+  videoId: string | null
+  position: number
+  duration: number
+  hasPrevious: boolean
+  hasNext: boolean
   connected: boolean
   volume: number | null
 }
@@ -393,7 +399,7 @@ export interface GoogleCastPlayRequest {
   position?: number
 }
 
-export type GoogleCastAction = 'play' | 'pause' | 'stop' | 'seek' | 'volume' | 'reconnect'
+export type CastAction = 'play' | 'pause' | 'stop' | 'detach' | 'seek' | 'volume' | 'reconnect' | 'previous' | 'next'
 
 export interface CastPlayRequest {
   screenId: string
