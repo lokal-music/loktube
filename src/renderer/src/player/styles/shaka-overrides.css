@@ -143,3 +143,8 @@
     text-align: center;
   }
 }
+
+.wt-player-casting .shaka-controls-container,
+.wt-player-casting .shaka-spinner-container {
+  display: none !important;
+}

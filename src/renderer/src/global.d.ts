@@ -73,12 +73,12 @@ declare global {
       listCastScreens: () => Promise<import('../../shared/ipc').CastScreen[]>
       pairCastScreen: (code: string) => Promise<import('../../shared/ipc').CastScreen>
       forgetCastScreen: (id: string) => Promise<void>
-      playOnCastScreen: (request: import('../../shared/ipc').CastPlayRequest) => Promise<void>
-      stopCastScreen: (id: string) => Promise<void>
+      playOnCastScreen: (request: import('../../shared/ipc').CastPlayRequest) => Promise<import('../../shared/ipc').CastPlaybackState>
+      playOnActiveCast: (request: Omit<import('../../shared/ipc').CastPlayRequest, 'screenId'>) => Promise<import('../../shared/ipc').CastPlaybackState>
       discoverGoogleCast: () => Promise<import('../../shared/ipc').GoogleCastDevice[]>
-      getGoogleCastState: () => Promise<import('../../shared/ipc').GoogleCastState | null>
-      playOnGoogleCast: (request: import('../../shared/ipc').GoogleCastPlayRequest) => Promise<import('../../shared/ipc').GoogleCastState>
-      controlGoogleCast: (action: import('../../shared/ipc').GoogleCastAction, value?: number) => Promise<import('../../shared/ipc').GoogleCastState | null>
+      getCastState: () => Promise<import('../../shared/ipc').CastPlaybackState | null>
+      playOnGoogleCast: (request: import('../../shared/ipc').GoogleCastPlayRequest) => Promise<import('../../shared/ipc').CastPlaybackState>
+      controlCast: (action: import('../../shared/ipc').CastAction, value?: number) => Promise<import('../../shared/ipc').CastPlaybackState | null>
       getVideoComments: (videoId: string, cursor?: string) => Promise<import('../../shared/ipc').VideoCommentsResponse>
       setVideoRating: (videoId: string, rating: import('../../shared/ipc').VideoRating) => Promise<import('../../shared/ipc').VideoRatingResponse>
       getVideoInfo: (videoId: string) => Promise<VideoInfoResponse>

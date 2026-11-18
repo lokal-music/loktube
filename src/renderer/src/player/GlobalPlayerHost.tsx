@@ -20,6 +20,8 @@ import './TheaterButton'
 import { usePictureInPictureNavigation } from './usePictureInPictureNavigation'
 import { useGlobalPlayer } from './GlobalPlayerContext'
 import { PLAYER_COMMAND_EVENT, PLAYER_SEEK_EVENT, PLAYER_STATE_EVENT, type PlayerCommandDetail, type PlayerStateDetail } from './events'
+import { useCastPlayback } from './CastPlayback'
+import { ReceiverControls } from './ReceiverControls'
 import { startSabrSession, type SabrSession } from './sabr'
 
 function describeError(error: unknown, depth = 0): unknown {
@@ -107,12 +109,26 @@ export const SHORTS_SLOT_ID = 'global-player-shorts-slot'
  */
 export function GlobalPlayerHost() {
   const { language, autoplayNext } = useLocale()
-  const { videoId, playbackToken, dashManifest, liveManifests, sabr, title, captions, storyboardVtt, playVideo, playVideoQueue, extendVideoQueue, playbackMode, videoQueue, shorts, openShort, status, relatedVideos } = useGlobalPlayer()
+  const { videoId, playbackToken, dashManifest, liveManifests, sabr, title, captions, storyboardVtt, playVideo, playVideoQueue, extendVideoQueue, playbackMode, videoQueue, musicQueue, shorts, openShort, status, relatedVideos } = useGlobalPlayer()
   const location = useLocation()
   const navigate = useNavigate()
   const { activeId: activeTabId } = useAppTabs()
   const { id: tabId, active: isTabActive, revision } = usePageTab()
   const { ownerId, shouldAutoplay } = usePlayerWorkspace()
+  const cast = useCastPlayback()
+  const isCasting = Boolean(cast.session && cast.castingTab === tabId)
+  const castRef = useRef(cast)
+  castRef.current = cast
+
+  useEffect(() => {
+    if (!isCasting || !cast.session?.connected || cast.busy || !videoId || cast.requestedVideoId === videoId) return
+    const queue = playbackMode === 'music' ? musicQueue : videoQueue
+    const ids = queue.map((item) => item.videoId).filter((id) => /^[a-zA-Z0-9_-]{11}$/.test(id))
+    const index = ids.indexOf(videoId)
+    const videoIds = index >= 0 ? ids.slice(Math.max(0, index - 15), index + 85) : [videoId]
+    cast.load({ videoId, videoIds })
+  }, [cast, isCasting, musicQueue, playbackMode, videoId, videoQueue])
+
   const watchSlotId = `${WATCH_SLOT_ID}-${tabId}`
   const miniSlotId = `${MINI_SLOT_ID}-${tabId}`
   const shortsSlotId = `${SHORTS_SLOT_ID}-${tabId}`
@@ -391,6 +407,24 @@ export function GlobalPlayerHost() {
         const dialog = target.closest('dialog, [role="dialog"]')
         if (dialog && !dialog.querySelector(`#${shortsSlotId}`)) return
       }
+      const remote = castRef.current
+      const receiver = remote.castingTab === tabId ? remote.session : null
+      if (receiver) {
+        const offset = key === 'j' ? -10 : key === 'l' ? 10 : key === 'arrowleft' ? -5 : key === 'arrowright' ? 5 : 0
+        const play = key === ' ' || key === 'k' || key === 'mediaplaypause'
+        if (!offset && !play && !next && !previous && key !== 'mediastop' && key !== 'arrowup' && key !== 'arrowdown') return
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        if (!receiver.connected) return
+        if (play && !event.repeat) remote.control(receiver.state === 'paused' || receiver.state === 'idle' ? 'play' : 'pause')
+        if (offset && receiver.duration) remote.control('seek', Math.min(receiver.duration, Math.max(0, receiver.position + offset)))
+        if (next && receiver.hasNext) remote.control('next')
+        if (previous && receiver.hasPrevious) remote.control('previous')
+        if (key === 'mediastop') remote.control('stop')
+        if (key === 'arrowup' || key === 'arrowdown')
+          remote.control('volume', Math.min(1, Math.max(0, (receiver.volume ?? 0.5) + (key === 'arrowup' ? 0.05 : -0.05))))
+        return
+      }
       const player = playerRef.current
       if (!player?.getAssetUri()) return
       if ((key === ',' || key === '.') && !videoEl.paused) return
@@ -495,7 +529,7 @@ export function GlobalPlayerHost() {
 
     const finishLoading = async () => {
       if (cancelled) return
-      if (autoplayAllowedRef.current && (shouldAutoplay(tabId) || pendingResumeRef.current?.videoId === videoId)) {
+      if (castRef.current.castingTab !== tabId && autoplayAllowedRef.current && (shouldAutoplay(tabId) || pendingResumeRef.current?.videoId === videoId)) {
         await videoEl.play().catch((error) => console.warn('Video autoplay failed', error))
       }
       if (!cancelled) setReadySource({ videoId, dashManifest, liveManifests, sabr })
@@ -699,6 +733,11 @@ export function GlobalPlayerHost() {
       const seconds = detail.seconds
       if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return
 
+      const remote = castRef.current
+      if (remote.session && remote.castingTab === tabId) {
+        remote.control('seek', Math.max(0, seconds))
+        return
+      }
       videoEl.currentTime = Math.max(0, seconds)
       void videoEl.play().catch((error: unknown) => console.error(`video play after seek failed: ${JSON.stringify(describeError(error))}`))
     }
@@ -715,6 +754,27 @@ export function GlobalPlayerHost() {
 
       if (detail.action === 'sync') {
         emitState()
+        return
+      }
+
+      if (detail.action === 'pause-local') {
+        videoEl.pause()
+        return
+      }
+
+      const remote = castRef.current
+      const receiver = remote.castingTab === tabId ? remote.session : null
+      if (receiver) {
+        switch (detail.action) {
+          case 'play': case 'pause': remote.control(detail.action); break
+          case 'toggle-play': remote.control(receiver.state === 'paused' || receiver.state === 'idle' ? 'play' : 'pause'); break
+          case 'seek-relative': case 'seek-to': {
+            const requested = detail.action === 'seek-relative' ? receiver.position + detail.seconds : detail.seconds
+            if (Number.isFinite(requested)) remote.control('seek', Math.min(receiver.duration || Infinity, Math.max(0, requested)))
+            break
+          }
+          case 'set-volume': remote.control('volume', detail.volume); break
+        }
         return
       }
 
@@ -767,12 +827,16 @@ export function GlobalPlayerHost() {
       }
     }
 
+    const guardLocalPlay = () => {
+      if (castRef.current.castingTab === tabId) videoEl.pause()
+    }
     window.addEventListener(PLAYER_SEEK_EVENT, handleSeek)
     window.addEventListener(PLAYER_COMMAND_EVENT, handleCommand)
     videoEl.addEventListener('durationchange', emitState)
     videoEl.addEventListener('ended', emitState)
     videoEl.addEventListener('loadedmetadata', emitState)
     videoEl.addEventListener('pause', emitState)
+    videoEl.addEventListener('play', guardLocalPlay)
     videoEl.addEventListener('play', emitState)
     videoEl.addEventListener('playing', emitState)
     videoEl.addEventListener('timeupdate', emitState)
@@ -790,6 +854,7 @@ export function GlobalPlayerHost() {
       videoEl.removeEventListener('ended', emitState)
       videoEl.removeEventListener('loadedmetadata', emitState)
       videoEl.removeEventListener('pause', emitState)
+      videoEl.removeEventListener('play', guardLocalPlay)
       videoEl.removeEventListener('play', emitState)
       videoEl.removeEventListener('playing', emitState)
       videoEl.removeEventListener('timeupdate', emitState)
@@ -810,7 +875,7 @@ export function GlobalPlayerHost() {
         // (it only sets a data-attribute marker on this element) — controls.css scopes
         // every layout/positioning rule for the control bar under this class, so without
         // it shaka's injected buttons/seek bar render completely unstyled.
-        <div ref={setContainerEl} data-player-tab-id={tabId} className={`shaka-video-container relative h-full w-full overflow-hidden bg-black ${isInitialLoading ? 'wt-player-loading' : ''}`}>
+        <div ref={setContainerEl} data-player-tab-id={tabId} className={`shaka-video-container relative h-full w-full overflow-hidden bg-black ${isCasting ? 'wt-player-casting' : isInitialLoading ? 'wt-player-loading' : ''}`}>
           <video ref={setVideoRef} className="h-full w-full" title={title} crossOrigin="anonymous" playsInline preload="auto">
             {captions.map((track) => (
               <track
@@ -826,8 +891,11 @@ export function GlobalPlayerHost() {
               />
             ))}
           </video>
-          {isInitialLoading && <div className="wt-initial-loader" role="status" aria-label={t("Loading...")}><GradientLoader label={t("Loading...")} size={42} /></div>}
-          {loadError && (
+          {isCasting && playbackMode !== 'music' && <div className="absolute inset-0 z-10 grid place-items-center bg-black p-2 sm:p-4">
+            <div className="w-full max-w-sm rounded-lg bg-neutral-900 p-2 sm:p-4"><ReceiverControls /></div>
+          </div>}
+          {!isCasting && isInitialLoading && <div className="wt-initial-loader" role="status" aria-label={t("Loading...")}><GradientLoader label={t("Loading...")} size={42} /></div>}
+          {!isCasting && loadError && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 p-4 text-center text-white">
               <p className="text-sm">{loadError}</p>
               <button

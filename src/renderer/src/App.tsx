@@ -39,6 +39,7 @@ import { ShortsModal } from './player/ShortsModal'
 import { PLAYER_COMMAND_EVENT, PLAYER_STATE_EVENT, MINI_PLAYER_OPEN_EVENT, type PlayerCommandDetail, type PlayerStateDetail } from './player/events'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { ChannelAvatar } from './components/ChannelAvatar'
+import { CastPlaybackProvider } from './player/CastPlayback'
 import { CastControl } from './components/CastControl'
 import { BrandMark } from './components/BrandMark'
 import { PlaybackLoadingIcon } from './components/PlaybackStatusIcon'
@@ -1042,7 +1043,7 @@ export default function App() {
   return (
     <ProfileProvider>
       <PlayerWorkspaceProvider>
-        <TheaterModeProvider><AppShell /></TheaterModeProvider>
+        <CastPlaybackProvider><TheaterModeProvider><AppShell /></TheaterModeProvider></CastPlaybackProvider>
       </PlayerWorkspaceProvider>
     </ProfileProvider>
   )

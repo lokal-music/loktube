@@ -3,10 +3,10 @@ import { networkInterfaces } from 'node:os'
 import { connect, type TLSSocket } from 'node:tls'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import type { GoogleCastPlayRequest, GoogleCastState } from '../shared/ipc'
+import type { CastPlayRequest, CastScreen, CastAction, GoogleCastPlayRequest, CastPlaybackState } from '../shared/ipc'
 import { CAST_SERVICE, collectCastDevices, decodeCastMessage, dnsQuery, encodeCastMessage, parseCastDnsPacket, type DnsRecord, type NetworkCastDevice } from './googleCastProtocol'
-import { commandUnpairedYoutubeScreen } from './tvCast'
-import { validYoutubeVideoIds } from './loungeProtocol'
+import { listCastScreens, openPairedYoutubeScreen, openUnpairedYoutubeScreen } from './tvCast'
+import type { LoungeSession } from './youtubeLounge'
 
 const RECEIVER = 'urn:x-cast:com.google.cast.receiver'
 const CONNECTION = 'urn:x-cast:com.google.cast.tp.connection'
@@ -19,9 +19,9 @@ const DISCOVERY_MS = 3600
 const DEVICE_TTL_MS = 120000
 
 const knownDevices = new Map<string, { device: NetworkCastDevice; time: number }>()
-let activeSession: { device: NetworkCastDevice; screenId: string; connection: CastConnection; state: 'playing' | 'paused' } | null = null
-let interruptedSession: { device: NetworkCastDevice; state: 'playing' | 'paused'; time: number } | null = null
-
+type CastTarget = { kind: 'google'; device: NetworkCastDevice } | { kind: 'tv'; device: CastScreen }
+type CastSession = CastTarget & { screenId: string; lounge: LoungeSession; connection?: CastConnection }
+let activeSession: CastSession | null = null
 
 export async function discoverGoogleCast(): Promise<NetworkCastDevice[]> {
   const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true })
@@ -164,10 +164,6 @@ class CastConnection {
     clearInterval(this.heartbeat)
     this.events.emit('failure', error)
     this.socket.destroy()
-    if (activeSession?.connection === this) {
-      interruptedSession = { device: activeSession.device, state: activeSession.state, time: Date.now() }
-      activeSession = null
-    }
   }
 
   private onData(chunk: Buffer) {
@@ -273,94 +269,152 @@ class CastConnection {
   async setVolume(level: number): Promise<number> {
     const id = this.requestId++
     const response = await this.request(RECEIVER, 'receiver-0', { type: 'SET_VOLUME', volume: { level }, requestId: id },
-      (ns, value) => ns === RECEIVER && value.type === 'RECEIVER_STATUS' && typeof value.status?.volume?.level === 'number', 6000)
+      (ns, value) => ns === RECEIVER && value.type === 'RECEIVER_STATUS' && (value.requestId === id ||
+        (typeof value.status?.volume?.level === 'number' && Math.abs(value.status.volume.level - level) < 0.005)), 6000)
     return response.status?.volume?.level ?? level
   }
 
   get volume(): number | null { return this.receiverVolume }
+  get connected(): boolean { return !this.closed }
   close() { this.fail(new Error('Cast session closed')) }
 }
 
-export function getGoogleCastSession(): GoogleCastState | null {
-  if (activeSession) return {
-    deviceId: activeSession.device.id, deviceName: activeSession.device.name,
-    state: activeSession.state, connected: true, volume: activeSession.connection.volume
-  }
-  if (interruptedSession && Date.now() - interruptedSession.time < 10 * 60_000) return {
-    deviceId: interruptedSession.device.id, deviceName: interruptedSession.device.name,
-    state: interruptedSession.state, connected: false, volume: null
-  }
-  interruptedSession = null
-  return null
-}
-
-async function restoreGoogleCast(): Promise<NonNullable<typeof activeSession>> {
-  if (activeSession) return activeSession
-  const missing = interruptedSession
-  if (!missing || Date.now() - missing.time >= 10 * 60_000)
-    throw new Error('No active Cast receiver. Select a device from the list again.')
-  const connection = await CastConnection.open(missing.device)
-  try {
-    const screenId = await connection.openYoutube()
-    activeSession = { device: missing.device, screenId, connection, state: missing.state }
-    interruptedSession = null
-    return activeSession
-  } catch (error) {
-    connection.close()
-    throw new Error('Could not reconnect to the Cast receiver. Rescan the network and select it again.', { cause: error })
+export function getCastSession(): CastPlaybackState | null {
+  if (!activeSession) return null
+  const { kind, device, lounge, connection } = activeSession
+  return {
+    deviceId: device.id, deviceName: device.name, kind, ...lounge.playback,
+    connected: lounge.connected,
+    volume: connection?.volume ?? lounge.volume
   }
 }
 
-export async function playOnGoogleCast(request: GoogleCastPlayRequest): Promise<GoogleCastState> {
-  if (!request || typeof request.deviceId !== 'string' || typeof request.videoId !== 'string' ||
-      !/^[a-zA-Z0-9_-]{11}$/.test(request.videoId)) throw new Error('Choose a Cast device and a playable YouTube video')
-  const known = knownDevices.get(request.deviceId)
-  if (!known || Date.now() - known.time > DEVICE_TTL_MS) throw new Error('Cast device not in a recent scan. Refresh the device list.')
-  const device = known.device
-  const list = validYoutubeVideoIds(request.videoIds ?? [request.videoId])
-  const ids = list.includes(request.videoId) ? list : [request.videoId, ...list]
-  const connection = await CastConnection.open(device)
+async function openTarget(target: CastTarget): Promise<CastSession> {
+  if (target.kind === 'tv') {
+    const screenId = target.device.id
+    return { ...target, screenId, lounge: await openPairedYoutubeScreen(screenId) }
+  }
+  const connection = await CastConnection.open(target.device)
   try {
     const screenId = await connection.openYoutube()
-    await commandUnpairedYoutubeScreen(screenId, 'setPlaylist', {
-      videoId: request.videoId, videoIds: ids.join(','), currentIndex: String(ids.indexOf(request.videoId)),
-      currentTime: String(Number.isFinite(request.position) ? Math.max(0, Math.floor(request.position ?? 0)) : 0)
-    })
-    const previous = activeSession
-    activeSession = { device, screenId, connection, state: 'playing' }
-    interruptedSession = null
-    if (previous && previous.connection !== connection) {
-      try { await commandUnpairedYoutubeScreen(previous.screenId, 'clearPlaylist', {}) }
-      catch { /* Do not roll back a successful handoff on a stale device. */ }
-      previous.connection.close()
-    }
-    return getGoogleCastSession()!
+    const lounge = await openUnpairedYoutubeScreen(screenId)
+    return { ...target, screenId, connection, lounge }
   } catch (error) {
     connection.close()
     throw error
   }
 }
 
-export async function controlGoogleCast(action: 'play' | 'pause' | 'seek' | 'stop' | 'volume' | 'reconnect', value?: number): Promise<GoogleCastState | null> {
-  const current = await restoreGoogleCast()
-  if (action === 'reconnect') return getGoogleCastSession()
-  if (action === 'volume') {
-    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) throw new Error('Volume must be between 0 and 100%')
-    await current.connection.setVolume(value)
-  } else if (action === 'seek') {
-    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 86400) throw new Error('Invalid seek position')
-    await commandUnpairedYoutubeScreen(current.screenId, 'seekTo', { newTime: String(value) })
-  } else {
-    await commandUnpairedYoutubeScreen(current.screenId, action === 'stop' ? 'clearPlaylist' : action, {})
-    if (action === 'stop') { activeSession = null; current.connection.close(); return null }
-    current.state = action === 'pause' ? 'paused' : 'playing'
-  }
-  return getGoogleCastSession()
+function closeSession(session: CastSession): void {
+  session.lounge.close()
+  session.connection?.close()
 }
 
-export function closeGoogleCast(): void {
-  const session = activeSession
+function validateVideo(request: Pick<CastPlayRequest, 'videoId'>): void {
+  if (!request || typeof request.videoId !== 'string' || !/^[a-zA-Z0-9_-]{11}$/.test(request.videoId))
+    throw new Error('Choose a Cast device and a playable YouTube video')
+}
+
+async function playOnTarget(target: CastTarget, request: CastPlayRequest | GoogleCastPlayRequest): Promise<CastPlaybackState> {
+  validateVideo(request)
+  const previous = activeSession
+  if (previous?.kind === target.kind && previous.device.id === target.device.id && previous.lounge.connected) {
+    await previous.lounge.setPlaylist(request)
+    return getCastSession()!
+  }
+
+  const session = await openTarget(target)
+  try { await session.lounge.setPlaylist(request) }
+  catch (error) { closeSession(session); throw error }
+
+  activeSession = session
+  if (previous) {
+    try {
+      if (previous.screenId !== session.screenId && previous.lounge.connected)
+        await previous.lounge.command('clearPlaylist')
+    } catch { /* The new receiver has already accepted playback. */ }
+    finally { closeSession(previous) }
+  }
+  return getCastSession()!
+}
+
+let pendingOperation = Promise.resolve()
+
+function runCastOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = pendingOperation.then(operation)
+  pendingOperation = result.then(() => undefined, () => undefined)
+  return result
+}
+
+export function playOnGoogleCast(request: GoogleCastPlayRequest): Promise<CastPlaybackState> {
+  return runCastOperation(async () => {
+    const known = knownDevices.get(request?.deviceId)
+    if (!known || Date.now() - known.time > DEVICE_TTL_MS) throw new Error('Cast device not in a recent scan. Refresh the device list.')
+    return playOnTarget({ kind: 'google', device: known.device }, request)
+  })
+}
+
+export function playOnCastScreen(request: CastPlayRequest): Promise<CastPlaybackState> {
+  return runCastOperation(async () => {
+    const device = (await listCastScreens()).find((screen) => screen.id === request?.screenId)
+    if (!device) throw new Error('TV not paired with LokTube')
+    return playOnTarget({ kind: 'tv', device }, request)
+  })
+}
+
+export function playOnActiveCast(request: Pick<CastPlayRequest, 'videoId' | 'videoIds' | 'position'>): Promise<CastPlaybackState> {
+  return runCastOperation(async () => {
+    validateVideo(request)
+    if (!activeSession) throw new Error('No active Cast receiver')
+    await activeSession.lounge.setPlaylist(request)
+    return getCastSession()!
+  })
+}
+
+export function controlCast(action: CastAction, value?: number): Promise<CastPlaybackState | null> {
+  return runCastOperation(async () => {
+    if (action === 'detach') {
+      closeCast()
+      return null
+    }
+    const current = activeSession
+    if (!current) throw new Error('No active Cast receiver. Select a device from the list again.')
+    switch (action) {
+      case 'reconnect': {
+        const device = current.kind === 'google' ? knownDevices.get(current.device.id)?.device : undefined
+        const restored = await openTarget(device ? { kind: 'google', device } : current)
+        try { await restored.lounge.command('getNowPlaying') }
+        catch (error) { closeSession(restored); throw error }
+        activeSession = restored
+        closeSession(current)
+        break
+      }
+      case 'volume':
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)
+          throw new Error('Volume must be between 0 and 100%')
+        if (current.connection?.connected) await current.connection.setVolume(value)
+        else await current.lounge.command('setVolume', { volume: String(Math.round(value * 100)) })
+        break
+      case 'seek':
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 86400)
+          throw new Error('Invalid seek position')
+        await current.lounge.command('seekTo', { newTime: String(value) })
+        break
+      case 'stop':
+        await current.lounge.command('clearPlaylist')
+        closeCast()
+        return null
+      case 'play': case 'pause': case 'previous': case 'next':
+        await current.lounge.command(action)
+        break
+      default:
+        throw new Error('Unknown Cast action')
+    }
+    return getCastSession()
+  })
+}
+
+export function closeCast(): void {
+  if (activeSession) closeSession(activeSession)
   activeSession = null
-  interruptedSession = null
-  session?.connection.close()
 }
