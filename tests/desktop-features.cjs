@@ -34,7 +34,7 @@ module.exports=async({app,page,profile})=>{
   assert.equal(await castDialog.getByText('Devices on this network',{exact:true}).count(),1)
   assert.equal(await castDialog.getByText('TV-code pairing (fallback)',{exact:true}).count(),1)
   assert.equal(await castDialog.getByRole('button',{name:'Refresh Cast devices'}).count(),1)
-  assert.equal(await page.evaluate(()=>window.api.getGoogleCastState()),null)
+  assert.equal(await page.evaluate(()=>window.api.getCastState()),null)
   await castDialog.getByRole('button',{name:'Close casting menu'}).click()
   await castDialog.waitFor({state:'hidden'})
   console.log('PASS: unified Cast device picker and TV-code fallback render without disrupting tabs')
