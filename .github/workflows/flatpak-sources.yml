@@ -37,7 +37,7 @@ jobs:
 
       - name: Generate pnpm sources
         run: |
-          ~/.local/bin/flatpak-node-generator pnpm pnpm-lock.yaml \
+          flatpak-node-generator pnpm pnpm-lock.yaml \
             --pnpm-store-version v11 \
             --electron-ffmpeg archive \
             -o packaging/flatpak/generated-sources.json
