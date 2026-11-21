@@ -63,5 +63,6 @@ modules:
       - type: archive
         url: https://github.com/pnpm/pnpm/releases/download/v12.4.1/pnpm-linux-x64.tar.gz
         sha256: 66e9886299085dade56e203ae0e3586f35787f8801a68d33ec07ac17b0de2001
+        strip-components: 0
         dest: flatpak-node/pnpm
       - packaging/flatpak/generated-sources.json
