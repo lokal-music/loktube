@@ -10,7 +10,7 @@ on:
       - ".github/workflows/flatpak-sources.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: flatpak-sources-${{ github.ref }}
@@ -41,6 +41,19 @@ jobs:
             --pnpm-store-version v11 \
             --electron-ffmpeg archive \
             -o packaging/flatpak/generated-sources.json
+
+      - name: Commit generated sources to this pull request
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packaging/flatpak/generated-sources.json
+          if ! git diff --cached --quiet; then
+            git commit -m "build(flatpak): update pinned dependency sources"
+            git push origin "HEAD:${HEAD_REF}"
+          fi
 
       - name: Validate AppStream metadata
         run: |
