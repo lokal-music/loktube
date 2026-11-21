@@ -23,7 +23,7 @@ Remaining closure tasks and owner decisions: [RELEASE_CHECKLIST.md](RELEASE_CHEC
 
 - GitHub repository: https://github.com/riberojuanca/worldtube
 - `electron-builder` creates installers and update metadata.
-- `electron-updater` reads published GitHub Releases from packaged applications.
+- Windows and Linux AppImage builds use `electron-updater`. Debian installs use a dedicated updater that checks the latest stable GitHub release, downloads the matching architecture's .deb, and installs it through `pkexec apt-get install` so dpkg retains ownership and the desktop authentication prompt is used. Flatpak updates remain system-managed.
 - Startup checks can be disabled in Account > Application.
 - Downloads require an explicit click; automatic installation on quit is disabled.
 - Clicking **Restart and install** directly installs the downloaded update and
@@ -35,7 +35,7 @@ Remaining closure tasks and owner decisions: [RELEASE_CHECKLIST.md](RELEASE_CHEC
   and show Update instead. New installs default to the current user; `/allusers`
   and existing machine-wide installations still use Builder's elevation flow.
 - Development instances never download or install updates.
-- Errors in checking/downloading are reported without stopping video playback.
+- Errors in checking/downloading are reported without stopping video playback. Debian installation cancellation or failure is shown in Application settings; successful package installation relaunches LokTube.
 - Local users, profiles and library data are not sent to GitHub.
 - The app name remains `worldtube` to preserve its existing user-data directory.
 - Linux desktop identity is `com.riberojuanca.worldtube` in packages and
