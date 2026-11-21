@@ -39,7 +39,8 @@ modules:
         PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
         COREPACK_HOME: /run/build/loktube/flatpak-node/corepack
     build-commands:
-      - pnpm install --offline --frozen-lockfile
+      # The offline cache has no registry metadata for pnpm's default age check.
+      - pnpm install --offline --frozen-lockfile --trust-lockfile
       - pnpm run notices
       - pnpm run build
       - node scripts/bundle-botguard.mjs
