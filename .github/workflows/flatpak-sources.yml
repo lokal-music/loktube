@@ -40,7 +40,7 @@ jobs:
           ~/.local/bin/flatpak-node-generator pnpm pnpm-lock.yaml \
             --pnpm-store-version v11 \
             --electron-ffmpeg archive \
-            --output packaging/flatpak/generated-sources.json
+            -o packaging/flatpak/generated-sources.json
 
       - name: Validate AppStream metadata
         run: |
