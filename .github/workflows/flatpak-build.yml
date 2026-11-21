@@ -1,0 +1,64 @@
+name: Flatpak build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "com.riberojuanca.worldtube.yml"
+      - "packaging/flatpak/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "src/**"
+      - "resources/**"
+      - "scripts/**"
+      - ".github/workflows/flatpak-build.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flatpak-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build x86_64 Flatpak
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Flatpak build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes flatpak flatpak-builder appstream fuse3
+
+      - name: Add Flathub and install build runtime
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub \
+            org.freedesktop.Platform//26.08 \
+            org.freedesktop.Sdk//26.08 \
+            org.electronjs.Electron2.BaseApp//26.08 \
+            org.freedesktop.Sdk.Extension.node22//26.08
+
+      - name: Validate AppStream metadata
+        run: appstreamcli validate packaging/flatpak/com.riberojuanca.worldtube.metainfo.xml
+
+      - name: Build Flatpak
+        run: |
+          flatpak-builder --user --disable-rofiles-fuse --force-clean \
+            --install-deps-from=flathub --repo=repo build-dir \
+            com.riberojuanca.worldtube.yml
+
+      - name: Create installable bundle for CI verification
+        run: |
+          flatpak build-bundle repo LokTube-ci.flatpak com.riberojuanca.worldtube
+
+      - name: Upload Flatpak bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: loktube-flatpak-x86_64
+          path: LokTube-ci.flatpak
+          if-no-files-found: error
+          retention-days: 7

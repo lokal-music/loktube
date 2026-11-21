@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=LokTube
+Comment=YouTube desktop client
+Exec=run.sh %U
+Terminal=false
+Type=Application
+Icon=com.riberojuanca.worldtube
+Categories=AudioVideo;Network;
+MimeType=x-scheme-handler/loktube;
+StartupWMClass=loktube
