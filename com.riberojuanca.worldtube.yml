@@ -23,7 +23,7 @@ finish-args:
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
 
 build-options:
-  append-path: /usr/lib/sdk/node22/bin
+  append-path: /usr/lib/sdk/node22/bin:flatpak-node/pnpm
   env:
     NPM_CONFIG_LOGLEVEL: info
 
@@ -39,11 +39,11 @@ modules:
         PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
         COREPACK_HOME: /run/build/loktube/flatpak-node/corepack
     build-commands:
-      - corepack pnpm install --offline --frozen-lockfile
-      - corepack pnpm run notices
-      - corepack pnpm run build
+      - pnpm install --offline --frozen-lockfile
+      - pnpm run notices
+      - pnpm run build
       - node scripts/bundle-botguard.mjs
-      - corepack pnpm exec electron-builder --linux dir --x64 --publish never
+      - pnpm exec electron-builder --linux dir --x64 --publish never
       - install -d /app/lib/loktube
       - cp -a release/linux-unpacked/. /app/lib/loktube/
       - install -Dm755 packaging/flatpak/run.sh /app/bin/run.sh
@@ -60,4 +60,8 @@ modules:
     sources:
       - type: dir
         path: .
+      - type: archive
+        url: https://github.com/pnpm/pnpm/releases/download/v12.4.1/pnpm-linux-x64.tar.gz
+        sha256: 66e9886299085dade56e203ae0e3586f35787f8801a68d33ec07ac17b0de2001
+        dest: flatpak-node/pnpm
       - packaging/flatpak/generated-sources.json
