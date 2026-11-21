@@ -9,7 +9,7 @@ const code = transformSync(readFileSync('src/main/updates.ts', 'utf8'), {
   loader: 'ts', format: 'cjs', target: 'node22'
 }).code
 
-function setup({ packaged = true, incognito = false, fail = false } = {}) {
+function setup({ packaged = true, incognito = false, fail = false, flatpak = false } = {}) {
   const handlers = new Map()
   const calls = []
   const updater = new EventEmitter()
@@ -31,6 +31,7 @@ function setup({ packaged = true, incognito = false, fail = false } = {}) {
     './localDb': { getAppPreferences: async () => ({ checkForUpdatesOnStartup: false }) }
   }
   runInNewContext(code, { module, exports: module.exports, console, Error,
+    process: { env: flatpak ? { FLATPAK_ID: 'com.riberojuanca.worldtube' } : {} },
     require: (name) => {
       assert.ok(name in imports, 'Unexpected dependency: ' + name)
       return imports[name]
@@ -38,6 +39,7 @@ function setup({ packaged = true, incognito = false, fail = false } = {}) {
   })
   module.exports.registerUpdates()
   return { updater, calls, install: handlers.get('UPDATES_INSTALL'),
+    check: handlers.get('UPDATES_CHECK'), download: handlers.get('UPDATES_DOWNLOAD'),
     state: handlers.get('UPDATES_STATE') }
 }
 
@@ -81,4 +83,16 @@ test('asynchronous updater errors release the install guard', () => {
   instance.updater.emit('update-downloaded', { version: '2.0.3' })
   instance.install()
   assert.equal(instance.calls.length, 2)
+})
+
+
+test('Flatpak delegates updates to the system and never invokes electron-updater', async () => {
+  const instance = setup({ flatpak: true })
+  assert.equal(instance.state().status, 'current')
+  assert.equal(instance.updater.listenerCount('checking-for-update'), 0)
+  assert.equal(instance.updater.listenerCount('update-available'), 0)
+  assert.equal((await instance.check()).status, 'current')
+  assert.equal((await instance.download()).status, 'current')
+  instance.install()
+  assert.equal(instance.calls.length, 0)
 })
