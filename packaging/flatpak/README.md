@@ -1,47 +1,58 @@
 # Flatpak / Flathub packaging
 
-This directory holds the AppStream metadata and packaging notes for the planned
-Flathub distribution. The application ID intentionally matches the existing
-Electron/Linux identity, `com.riberojuanca.worldtube`, to preserve the
-application's established desktop integration.
+The AppStream metadata uses the established Linux application ID
+`com.riberojuanca.worldtube` so a future Flatpak can coexist with the
+existing LokTube desktop identity. The visible application name is **LokTube**
+and the developer attribution is **Cheyckit**.
 
-## Status
+## Current status
 
-The metadata is a starting point, **not yet a Flathub-submittable package**.
-Do not submit this directory to Flathub until the source-build manifest and
-offline dependency sources have been generated and tested.
+This directory is not yet a publishable Flatpak. In particular, there is no
+verified Flatpak manifest or committed offline dependency source set. Do not
+submit it to Flathub or advertise it as installable until the complete build
+and runtime checks pass.
 
-LokTube uses Electron 43 and pnpm 12. Flathub builds must compile the app from
-source in the Flatpak sandbox. Uploading or repackaging the existing AppImage
-or DEB is not an acceptable substitute. The pnpm dependency graph (including
-native/runtime dependencies and the project's patched youtubei.js dependency)
-must be represented as pinned, verifiable sources so the build can run offline.
+LokTube uses Electron 43 and pnpm 12.4.1 with a pnpm v9 lockfile and a patched
+`youtubei.js` dependency. Flathub builds must compile from repository source
+inside the Flatpak sandbox; repackaging the AppImage or DEB is not acceptable.
 
-## Required packaging work
+## Reproducible dependency-source generation
 
-1. Generate a complete source list from `pnpm-lock.yaml` with the current
-   `flatpak-node-generator` tooling. Confirm it handles pnpm lockfile v9,
-   pnpm 12, optional platform packages, and the project's patched dependency.
-2. Add a Flatpak manifest for x86_64 first, building Electron and the renderer
-   from the repository source. Keep network access out of the build phase.
-3. Install the desktop file, scalable and raster icons, AppStream metadata,
-   and complete license/third-party notices into the standard Flatpak paths.
-4. Grant only the runtime permissions actually required. YouTube playback,
-   account sign-in, downloads, file selection, and media-key integration need
-   explicit testing under the Flatpak sandbox. Prefer desktop portals over
-   broad filesystem access.
-5. Test installation, launch, Google sign-in, video/audio playback, downloads,
-   file chooser, external links, incognito mode, media keys, and upgrade
-   behavior on COSMIC and at least one other Wayland desktop.
-6. Validate the final manifest with Flathub's tooling and submit it through
-   Flathub's `new-pr` branch only after the source build passes.
+The workflow `.github/workflows/flatpak-sources.yml` runs
+`flatpak-node-generator` against the committed lockfile using the pnpm v11
+store compatibility mode required for pnpm 12. It also requests the matching
+Electron FFmpeg archive and validates the AppStream metadata. The generated
+JSON is uploaded as the
+`loktube-flatpak-generated-sources` Actions artifact.
+
+This is an initial compatibility gate, not proof that the application can
+already be built offline. Review the generated output for the patched
+`youtubei.js` source and all platform-specific packages before committing it
+as `generated-sources.json`.
+
+## Remaining work before Flathub submission
+
+1. Confirm source generation succeeds and includes every dependency, including
+   the patched `youtubei.js` source and Electron runtime assets.
+2. Add a Flatpak manifest for x86_64 using the generated source set and a
+   supported Electron BaseApp / Node SDK extension combination.
+3. Build LokTube from source with network access disabled during the build.
+   The build must not rely on electron-builder downloading Electron, FFmpeg,
+   or other artifacts at build time.
+4. Install the correct desktop entry, scalable and raster icons, AppStream
+   metadata, and complete license / third-party notices.
+5. Grant only required sandbox permissions. Test YouTube playback, browser
+   sign-in, downloads, file chooser, external links, incognito mode, media
+   keys, and upgrade behavior on COSMIC and another Wayland desktop.
+6. Validate with Flathub tooling, then submit through Flathub's `new-pr`
+   branch only after the build and runtime tests pass.
 
 ## Updates
 
-Flatpak sets `FLATPAK_ID` in the application environment. LokTube uses that
+Flatpak sets `FLATPAK_ID` in the application environment. LokTube uses this
 signal to suppress `electron-updater` and leaves update delivery to the
-installed Flatpak remote (Flathub, surfaced by COSMIC Store). AppImage and DEB
-installations retain the existing GitHub Releases updater.
+configured Flatpak remote. AppImage and DEB installations retain the existing
+GitHub Releases updater.
 
 ## References
 
