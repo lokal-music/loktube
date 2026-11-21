@@ -110,6 +110,47 @@ jobs:
             release/*.blockmap
           if-no-files-found: error
 
+  flatpak:
+    needs: prepare
+    if: needs.prepare.outputs.published != 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Flatpak build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes flatpak flatpak-builder appstream fuse3
+      - name: Add Flathub and install build runtime
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub \
+            org.freedesktop.Platform//26.08 \
+            org.freedesktop.Sdk//26.08 \
+            org.electronjs.Electron2.BaseApp//26.08 \
+            org.freedesktop.Sdk.Extension.node22//26.08
+      - name: Validate AppStream metadata
+        run: appstreamcli validate packaging/flatpak/com.riberojuanca.worldtube.metainfo.xml
+      - name: Build Flatpak
+        run: |
+          flatpak-builder --user --disable-rofiles-fuse --force-clean \
+            --install-deps-from=flathub --repo=repo build-dir \
+            com.riberojuanca.worldtube.yml
+      - name: Bundle and upload Flatpak to draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          test "v$VERSION" = "$TAG"
+          BUNDLE="LokTube-$VERSION-linux-x86_64.flatpak"
+          flatpak build-bundle repo "$BUNDLE" com.riberojuanca.worldtube
+          test -s "$BUNDLE"
+          gh release upload "$TAG" "$BUNDLE" --clobber
+          gh release view "$TAG" --json assets --jq '.assets[].name' |
+            grep -Fx "$BUNDLE"
+
   mac:
     needs: prepare
     if: needs.prepare.outputs.published != 'true'
@@ -267,8 +308,8 @@ jobs:
           fi
 
   publish:
-    needs: [prepare, package, mac, mac_upload]
-    if: always() && needs.prepare.outputs.published != 'true' && needs.prepare.result == 'success' && (needs.package.result == 'success' || (needs.package.result == 'skipped' && needs.prepare.outputs.ready_assets == 'true')) && needs.mac.result == 'success' && needs.mac_upload.result == 'success'
+    needs: [prepare, package, flatpak, mac, mac_upload]
+    if: always() && needs.prepare.outputs.published != 'true' && needs.prepare.result == 'success' && (needs.package.result == 'success' || (needs.package.result == 'skipped' && needs.prepare.outputs.ready_assets == 'true')) && needs.flatpak.result == 'success' && needs.mac.result == 'success' && needs.mac_upload.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
