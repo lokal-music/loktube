@@ -23,7 +23,7 @@ finish-args:
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
 
 build-options:
-  append-path: /usr/lib/sdk/node22/bin:flatpak-node/pnpm
+  append-path: /usr/lib/sdk/node22/bin:/run/build/loktube/flatpak-node/pnpm
   env:
     NPM_CONFIG_LOGLEVEL: info
 
