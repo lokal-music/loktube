@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.riberojuanca.worldtube</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-only</project_license>
+  <name>LokTube</name>
+  <summary>A desktop YouTube client with account features and ad protection</summary>
+  <description>
+    <p>LokTube is a desktop YouTube client with browser sign-in, account recommendations and history, independent tabs, persistent players, and app-wide ad protection.</p>
+    <p>LokTube is an independent third-party application and is not affiliated with Google or YouTube.</p>
+  </description>
+  <launchable type="desktop-id">com.riberojuanca.worldtube.desktop</launchable>
+  <provides>
+    <binary>loktube</binary>
+  </provides>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Network</category>
+  </categories>
+  <url type="homepage">https://github.com/lokal-music/loktube</url>
+  <url type="bugtracker">https://github.com/lokal-music/loktube/issues</url>
+  <url type="vcs-browser">https://github.com/lokal-music/loktube</url>
+  <developer id="com.riberojuanca">
+    <name>LokTube contributors</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+</component>
