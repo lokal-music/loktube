@@ -41,6 +41,7 @@ modules:
     build-commands:
       # The offline cache has no registry metadata for pnpm's default age check.
       - pnpm install --offline --frozen-lockfile --trust-lockfile
+      - node node_modules/electron/install.js
       - pnpm run notices
       - pnpm run build
       - node scripts/bundle-botguard.mjs
