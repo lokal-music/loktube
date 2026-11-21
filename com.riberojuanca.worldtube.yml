@@ -23,7 +23,7 @@ finish-args:
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
 
 build-options:
-  append-path: /usr/lib/sdk/node22/bin:flatpak-node/pnpm
+  append-path: /usr/lib/sdk/node22/bin:/run/build/loktube/flatpak-node/pnpm
   env:
     NPM_CONFIG_LOGLEVEL: info
 
@@ -39,7 +39,9 @@ modules:
         PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
         COREPACK_HOME: /run/build/loktube/flatpak-node/corepack
     build-commands:
-      - pnpm install --offline --frozen-lockfile
+      # The offline cache has no registry metadata for pnpm's default age check.
+      - pnpm install --offline --frozen-lockfile --trust-lockfile
+      - node node_modules/electron/install.js
       - pnpm run notices
       - pnpm run build
       - node scripts/bundle-botguard.mjs
@@ -63,5 +65,6 @@ modules:
       - type: archive
         url: https://github.com/pnpm/pnpm/releases/download/v12.4.1/pnpm-linux-x64.tar.gz
         sha256: 66e9886299085dade56e203ae0e3586f35787f8801a68d33ec07ac17b0de2001
+        strip-components: 0
         dest: flatpak-node/pnpm
       - packaging/flatpak/generated-sources.json

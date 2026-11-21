@@ -1,5 +1,6 @@
 appId: com.riberojuanca.worldtube
 productName: LokTube
+electronDist: node_modules/electron/dist
 protocols:
   - name: LokTube links
     schemes:
