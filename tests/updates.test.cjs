@@ -9,7 +9,7 @@ const code = transformSync(readFileSync('src/main/updates.ts', 'utf8'), {
   loader: 'ts', format: 'cjs', target: 'node22'
 }).code
 
-function setup({ packaged = true, incognito = false, fail = false, flatpak = false } = {}) {
+function setup({ packaged = true, incognito = false, fail = false, flatpak = false, linuxDeb = false, latest = null } = {}) {
   const handlers = new Map()
   const calls = []
   const updater = new EventEmitter()
@@ -22,7 +22,7 @@ function setup({ packaged = true, incognito = false, fail = false, flatpak = fal
   const imports = {
     './incognito': { isIncognito: incognito },
     electron: {
-      app: { isPackaged: packaged, getVersion: () => '2.0.2' },
+      app: { isPackaged: packaged, getVersion: () => '2.0.2', relaunch: () => {}, quit: () => {} },
       BrowserWindow: { getAllWindows: () => [] },
       ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) }
     },
@@ -31,7 +31,18 @@ function setup({ packaged = true, incognito = false, fail = false, flatpak = fal
     './localDb': { getAppPreferences: async () => ({ checkForUpdatesOnStartup: false }) }
   }
   runInNewContext(code, { module, exports: module.exports, console, Error,
-    process: { env: flatpak ? { FLATPAK_ID: 'com.riberojuanca.worldtube' } : {} },
+    process: { platform: linuxDeb ? 'linux' : 'win32', arch: 'x64', env: flatpak ? { FLATPAK_ID: 'com.riberojuanca.worldtube' } : linuxDeb ? {} : { APPIMAGE: '/tmp/LokTube.AppImage' } },
+    fetch: async (url) => {
+      if (!latest) throw new Error('network unavailable')
+      if (url.includes('/releases/latest')) return { ok: true, json: async () => latest }
+      return { ok: true, arrayBuffer: async () => new Uint8Array(2048).buffer }
+    },
+    Buffer: { from: (value) => value },
+    AbortSignal: { timeout: () => undefined },
+    writeFile: async () => {},
+    join: (...parts) => parts.join('/'),
+    tmpdir: () => '/tmp',
+    spawn: () => { const child = new EventEmitter(); process.nextTick(() => child.emit('close', 1)); return child },
     require: (name) => {
       assert.ok(name in imports, 'Unexpected dependency: ' + name)
       return imports[name]
@@ -95,4 +106,22 @@ test('Flatpak delegates updates to the system and never invokes electron-updater
   assert.equal((await instance.download()).status, 'current')
   instance.install()
   assert.equal(instance.calls.length, 0)
+})
+
+
+test('Debian updates use the matching GitHub .deb asset rather than electron-updater', async () => {
+  const latest = { tag_name: 'v2.2.2', draft: false, prerelease: false, assets: [
+    { name: 'LokTube-2.2.2-linux-amd64.deb', browser_download_url: 'https://github.com/lokal-music/loktube/releases/download/v2.2.2/LokTube-2.2.2-linux-amd64.deb' }
+  ] }
+  const instance = setup({ linuxDeb: true, latest })
+  assert.equal(instance.updater.listenerCount('checking-for-update'), 0)
+  assert.equal((await instance.check()).status, 'available')
+  assert.equal((await instance.download()).status, 'downloaded')
+})
+
+test('Debian updater reports a missing architecture-specific package', async () => {
+  const instance = setup({ linuxDeb: true, latest: { tag_name: 'v2.2.2', draft: false, prerelease: false, assets: [] } })
+  const state = await instance.check()
+  assert.equal(state.status, 'error')
+  assert.match(state.error, /missing LokTube-2.2.2-linux-amd64.deb/)
 })
