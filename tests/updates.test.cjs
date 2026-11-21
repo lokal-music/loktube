@@ -28,7 +28,15 @@ function setup({ packaged = true, incognito = false, fail = false, flatpak = fal
     },
     'electron-updater': { autoUpdater: updater },
     '../shared/ipc': { IPC_CHANNELS: channels },
-    './localDb': { getAppPreferences: async () => ({ checkForUpdatesOnStartup: false }) }
+    './localDb': { getAppPreferences: async () => ({ checkForUpdatesOnStartup: false }) },
+    'node:child_process': { spawn: (...args) => sandbox.spawn(...args) },
+    'node:fs/promises': { writeFile: (...args) => sandbox.writeFile(...args) },
+    'node:path': { join: (...args) => sandbox.join(...args) },
+    'node:os': { tmpdir: () => sandbox.tmpdir() }
+  }
+  const sandbox = {
+    spawn: () => { const child = new EventEmitter(); process.nextTick(() => child.emit('close', 1)); return child },
+    writeFile: async () => {}, join: (...parts) => parts.join('/'), tmpdir: () => '/tmp'
   }
   runInNewContext(code, { module, exports: module.exports, console, Error,
     process: { platform: linuxDeb ? 'linux' : 'win32', arch: 'x64', env: flatpak ? { FLATPAK_ID: 'com.riberojuanca.worldtube' } : linuxDeb ? {} : { APPIMAGE: '/tmp/LokTube.AppImage' } },
@@ -39,10 +47,7 @@ function setup({ packaged = true, incognito = false, fail = false, flatpak = fal
     },
     Buffer: { from: (value) => value },
     AbortSignal: { timeout: () => undefined },
-    writeFile: async () => {},
-    join: (...parts) => parts.join('/'),
-    tmpdir: () => '/tmp',
-    spawn: () => { const child = new EventEmitter(); process.nextTick(() => child.emit('close', 1)); return child },
+    Buffer,
     require: (name) => {
       assert.ok(name in imports, 'Unexpected dependency: ' + name)
       return imports[name]
